@@ -3,11 +3,25 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>THE CORRIDOR</title>
+
 <style>
-* { margin:0; padding:0; }
-body { overflow:hidden; background:black; font-family:Arial; }
-canvas { display:block; }
+* {
+ margin:0;
+ padding:0;
+ box-sizing:border-box;
+}
+
+body {
+ overflow:hidden;
+ background:black;
+ font-family:Arial;
+}
+
+canvas {
+ display:block;
+}
 
 #ui {
  position:absolute;
@@ -17,7 +31,7 @@ canvas { display:block; }
  align-items:center;
  justify-content:center;
  color:white;
- background:rgba(0,0,0,.8);
+ background:rgba(0,0,0,.9);
  z-index:10;
  text-align:center;
 }
@@ -28,7 +42,10 @@ h1 {
  text-shadow:0 0 15px #900;
 }
 
-p { margin-top:20px; color:#aaa; }
+p {
+ margin-top:20px;
+ color:#aaa;
+}
 
 button {
  margin-top:35px;
@@ -40,7 +57,9 @@ button {
  font-size:16px;
 }
 
-button:hover { background:#700; }
+button:hover {
+ background:#700;
+}
 
 #black {
  position:absolute;
@@ -57,22 +76,25 @@ button:hover { background:#700; }
  bottom:20px;
  left:20px;
  color:#aaa;
+ z-index:2;
  font-size:12px;
 }
 </style>
 </head>
+
 <body>
 
 <div id="ui">
  <h1>THE CORRIDOR</h1>
  <p>Tu es seul dans ce couloir...</p>
- <button onclick="start()">ENTRER</button>
+ <button id="startButton">ENTRER</button>
 </div>
 
 <div id="black"></div>
 <div id="instructions"></div>
 
 <script type="module">
+
 import * as THREE from
 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 
@@ -81,42 +103,52 @@ scene.background = new THREE.Color(0x000000);
 scene.fog = new THREE.FogExp2(0x000000,0.055);
 
 const camera = new THREE.PerspectiveCamera(
- 75,innerWidth/innerHeight,0.1,100
+75,innerWidth/innerHeight,0.1,100
 );
+
 camera.position.set(0,1.6,4);
 
 const renderer = new THREE.WebGLRenderer({
- antialias:false
+antialias:false
 });
+
 renderer.setSize(innerWidth,innerHeight);
 renderer.setPixelRatio(0.7);
 document.body.appendChild(renderer.domElement);
 
-// Lumière
+// LUMIÈRES
+
 scene.add(new THREE.AmbientLight(0x222222));
 
 const light = new THREE.PointLight(0xffddaa,8,12);
 light.position.set(0,2,1);
 scene.add(light);
 
-// Matériaux
+const endLight = new THREE.PointLight(0x777777,3,8);
+endLight.position.set(0,2,-25);
+scene.add(endLight);
+
+// MATÉRIAUX
+
 const wallMat = new THREE.MeshStandardMaterial({
- color:0x252525,
- roughness:1
-});
-const floorMat = new THREE.MeshStandardMaterial({
- color:0x151515,
- roughness:1
+color:0x252525,
+roughness:1
 });
 
-// Création du couloir
+const floorMat = new THREE.MeshStandardMaterial({
+color:0x151515,
+roughness:1
+});
+
+// COULOIR
+
 function box(w,h,d,x,y,z,mat) {
- const mesh = new THREE.Mesh(
-  new THREE.BoxGeometry(w,h,d),mat
- );
- mesh.position.set(x,y,z);
- scene.add(mesh);
- return mesh;
+const mesh = new THREE.Mesh(
+new THREE.BoxGeometry(w,h,d),mat
+);
+mesh.position.set(x,y,z);
+scene.add(mesh);
+return mesh;
 }
 
 box(6,0.2,35,0,-0.1,-13,floorMat);
@@ -125,134 +157,193 @@ box(0.2,3.2,35,-3,1.5,-13,wallMat);
 box(0.2,3.2,35,3,1.5,-13,wallMat);
 box(6,3.2,0.2,0,1.5,-30,wallMat);
 
-// Lumière lointaine
-const endLight = new THREE.PointLight(0x777777,3,8);
-endLight.position.set(0,2,-25);
-scene.add(endLight);
+// CRÉATURE
 
-// Créature
 const monster = new THREE.Group();
 scene.add(monster);
 
 const dark = new THREE.MeshStandardMaterial({
- color:0x050505,
- roughness:1
+color:0x050505,
+roughness:1
 });
 
 const body = new THREE.Mesh(
- new THREE.CapsuleGeometry(0.45,1.1,4,6),dark
+new THREE.CapsuleGeometry(0.45,1.1,4,6),dark
 );
+
 body.position.y=1;
 monster.add(body);
 
 const head = new THREE.Mesh(
- new THREE.SphereGeometry(0.42,6,5),dark
+new THREE.SphereGeometry(0.42,6,5),dark
 );
+
 head.position.y=2;
 monster.add(head);
 
-// Yeux
-const eyeMat = new THREE.MeshBasicMaterial({color:0xaa0000});
+// YEUX
+
+const eyeMat = new THREE.MeshBasicMaterial({
+color:0xaa0000
+});
 
 for(let x of [-0.16,0.16]) {
- const eye = new THREE.Mesh(
-  new THREE.SphereGeometry(0.055,5,5),eyeMat
- );
- eye.position.set(x,2.05,-0.36);
- monster.add(eye);
+const eye = new THREE.Mesh(
+new THREE.SphereGeometry(0.055,5,5),
+eyeMat
+);
+eye.position.set(x,2.05,-0.36);
+monster.add(eye);
 }
 
 monster.position.set(0,0,-25);
 monster.visible=false;
 
-// Variables
+// VARIABLES
+
 let firstTime=true;
 let playing=false;
 let monsterDistance=0;
-let playerSpeed=0;
 let keys={};
 
+// BOUTON ENTRER CORRIGÉ
+
+document.getElementById("startButton")
+.addEventListener("click",start);
+
+// CLAVIER
+
 document.addEventListener("keydown",e=>{
- keys[e.key.toLowerCase()]=true;
+keys[e.key.toLowerCase()]=true;
 });
+
 document.addEventListener("keyup",e=>{
- keys[e.key.toLowerCase()]=false;
+keys[e.key.toLowerCase()]=false;
 });
+
+// LANCEMENT DU JEU
 
 function start() {
- document.getElementById("ui").style.display="none";
- document.getElementById("black").style.opacity=0;
 
- camera.position.set(0,1.6,4);
- camera.rotation.set(0,0,0);
+console.log("LE JEU DEMARRE !");
 
- monsterDistance=0;
- monster.position.set(0,0,-25);
- monster.visible=false;
+document.getElementById("ui").style.display="none";
+document.getElementById("black").style.opacity=0;
 
- playing=true;
+camera.position.set(0,1.6,4);
+camera.rotation.set(0,0,0);
 
- document.getElementById("instructions").innerText =
- firstTime ? "" : "ZQSD / FLÈCHES : BOUGER";
+monsterDistance=0;
+monster.position.set(0,0,-25);
+monster.visible=false;
+
+playing=true;
+
+document.getElementById("instructions").innerText =
+firstTime ? "" : "ZQSD / FLÈCHES : BOUGER";
 }
+
+// FIN DU PASSAGE
 
 function endGame() {
- playing=false;
- document.getElementById("black").style.opacity=1;
 
- setTimeout(()=>{
-  document.getElementById("ui").innerHTML=`
-   <h1>THE CORRIDOR</h1>
-   <p>${firstTime ? "..." : "Tu n'aurais jamais dû revenir."}</p>
-   <button onclick="start()">RECOMMENCER</button>
-  `;
-  document.getElementById("ui").style.display="flex";
+playing=false;
 
-  if(firstTime) firstTime=false;
- },1800);
+document.getElementById("black").style.opacity=1;
+
+setTimeout(()=>{
+
+document.getElementById("ui").innerHTML=`
+<h1>THE CORRIDOR</h1>
+<p>Tu pensais que c'était terminé ?</p>
+<button id="startButton">RECOMMENCER</button>
+`;
+
+document.getElementById("ui").style.display="flex";
+
+document.getElementById("startButton")
+.addEventListener("click",start);
+
+document.getElementById("instructions").innerText="";
+
+firstTime=false;
+
+},1800);
+
 }
+
+// MISE À JOUR
 
 function update() {
- if(!playing) return;
 
- if(firstTime) {
-  monster.visible=true;
-  monsterDistance+=0.035;
-  monster.position.z=-25+monsterDistance*20;
-  monster.scale.setScalar(1+monsterDistance*0.5);
+if(!playing) return;
 
-  if(monsterDistance>1.05) endGame();
+if(firstTime) {
 
- } else {
-  const speed=0.07;
+monster.visible=true;
+monsterDistance+=0.008;
+monster.position.z=-25+monsterDistance*20;
 
-  if(keys["z"] || keys["arrowup"])
-   camera.position.z-=speed;
-  if(keys["s"] || keys["arrowdown"])
-   camera.position.z+=speed;
-  if(keys["q"] || keys["arrowleft"])
-   camera.position.x-=speed;
-  if(keys["d"] || keys["arrowright"])
-   camera.position.x+=speed;
+monster.scale.setScalar(1+monsterDistance*0.5);
 
-  camera.position.x=THREE.MathUtils.clamp(camera.position.x,-2.5,2.5);
-  camera.position.z=THREE.MathUtils.clamp(camera.position.z,-28,4);
- }
+if(monsterDistance>1.05) {
+endGame();
 }
 
+} else {
+
+const speed=0.07;
+
+if(keys["z"] || keys["arrowup"])
+camera.position.z-=speed;
+
+if(keys["s"] || keys["arrowdown"])
+camera.position.z+=speed;
+
+if(keys["q"] || keys["arrowleft"])
+camera.position.x-=speed;
+
+if(keys["d"] || keys["arrowright"])
+camera.position.x+=speed;
+
+camera.position.x=THREE.MathUtils.clamp(
+camera.position.x,-2.5,2.5
+);
+
+camera.position.z=THREE.MathUtils.clamp(
+camera.position.z,-28,4
+);
+
+}
+
+}
+
+// BOUCLE DU JEU
+
 function animate() {
- requestAnimationFrame(animate);
- update();
- renderer.render(scene,camera);
+
+requestAnimationFrame(animate);
+
+update();
+
+renderer.render(scene,camera);
+
 }
 
 animate();
 
+// REDIMENSIONNEMENT
+
 window.addEventListener("resize",()=>{
- camera.aspect=innerWidth/innerHeight;
- camera.updateProjectionMatrix();
- renderer.setSize(innerWidth,innerHeight);
+
+camera.aspect=innerWidth/innerHeight;
+camera.updateProjectionMatrix();
+
+renderer.setSize(innerWidth,innerHeight);
+
 });
+
 </script>
 </body>
 </html>
+
