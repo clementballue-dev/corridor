@@ -95,7 +95,7 @@ button:hover { background:#600; }
 
 #prompt {
     position:fixed;
-    top:60%;
+    top:65%;
     left:50%;
     transform:translate(-50%,-50%);
     color:#fff;
@@ -118,6 +118,28 @@ button:hover { background:#600; }
     z-index:4;
     letter-spacing:2px;
 }
+
+#blood-message {
+    position:fixed;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    color:#ff0000;
+    font-size:clamp(24px, 4vw, 48px);
+    font-weight:bold;
+    letter-spacing:5px;
+    text-shadow:0 0 20px #900, 0 0 40px #f00;
+    z-index:4;
+    display:none;
+    pointer-events:none;
+    text-align:center;
+    animation:pulse 1.5s infinite alternate;
+}
+
+@keyframes pulse {
+    0% { transform:translate(-50%,-50%) scale(0.95); opacity: 0.8; }
+    100% { transform:translate(-50%,-50%) scale(1.05); opacity: 1; }
+}
 </style>
 </head>
 
@@ -133,7 +155,8 @@ button:hover { background:#600; }
 <div id="help"></div>
 <div id="crosshair">+</div>
 <div id="prompt">APPUIE SUR [E] OU CLIQUE POUR OUVRIR</div>
-<div id="loop-counter">BOUCLE : <span id="loop-num">0</span></div>
+<div id="loop-counter">PORTES OUVERTES : <span id="loop-num">0</span></div>
+<div id="blood-message">ARRÊTE D'OUVRIR LES PORTES</div>
 
 <canvas id="game"></canvas>
 
@@ -156,13 +179,14 @@ const help = document.getElementById("help");
 const crosshair = document.getElementById("crosshair");
 const promptEl = document.getElementById("prompt");
 const loopNumEl = document.getElementById("loop-num");
+const bloodMsgEl = document.getElementById("blood-message");
 
 let playing = false;
 let second = false;
 let monster = 0;
 let scare = false;
 let scareTime = 0;
-let loopCount = 0;
+let doorsOpened = 0;
 
 let playerX = 0;
 let playerZ = 2;
@@ -172,6 +196,9 @@ let keys = {};
 let lastTime = 0;
 let stepTimer = 0;
 let activeDoor = null;
+
+// Taches de sang fixes générées
+let bloodStains = [];
 
 let doors = [
     { id: 0, side: 1,  x: 2.48,  z: -9,  openProgress: 0, opening: false },
@@ -184,6 +211,20 @@ let audioCtx = null;
 function initAudio() {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+}
+
+function generateBloodStains() {
+    bloodStains = [];
+    for(let i = 0; i < 40; i++) {
+        bloodStains.push({
+            x: (Math.random() - 0.5) * 4.8,
+            y: Math.random() * 2.8,
+            z: -Math.random() * 38,
+            radius: 0.3 + Math.random() * 0.8,
+            surface: Math.floor(Math.random() * 3), // 0: sol, 1: mur gauche, 2: mur droit
+            drip: Math.random() * 0.5
+        });
     }
 }
 
@@ -258,6 +299,7 @@ function start() {
     keys = {};
 
     resetDoors();
+    generateBloodStains();
 
     black.style.opacity = "0";
     menu.style.display = "none";
@@ -287,14 +329,19 @@ function openDoor(doorIndex) {
     setTimeout(() => {
         black.style.opacity = "1";
         setTimeout(() => {
-            loopCount++;
-            loopNumEl.innerText = loopCount;
+            doorsOpened++;
+            loopNumEl.innerText = doorsOpened;
             
             // Re-téléportation au début du couloir
             playerX = 0;
             playerZ = 2;
             yaw = 0;
             resetDoors();
+            
+            // Afficher le message à partir de la 15ème porte
+            if (doorsOpened >= 15) {
+                bloodMsgEl.style.display = "block";
+            }
             
             black.style.opacity = "0";
         }, 800);
@@ -341,6 +388,52 @@ function polygon(points,color) {
 
     ctx.closePath();
     ctx.fill();
+}
+
+// =================================
+// DESSIN DU SANG
+// =================================
+
+function drawBloodOverlay() {
+    if (doorsOpened < 2) return;
+
+    // Calcul de la quantité de sang (de 0 à 1 en fonction du nombre de portes ouvertes)
+    let bloodIntensity = Math.min(1, (doorsOpened - 1) / 14);
+
+    // Dessin des taches de sang dans le décor 3D
+    let visibleStainsCount = Math.floor(bloodStains.length * bloodIntensity);
+    for (let i = 0; i < visibleStainsCount; i++) {
+        let b = bloodStains[i];
+        let p = project(b.surface === 1 ? -2.47 : (b.surface === 2 ? 2.47 : b.x), b.surface === 0 ? 0.01 : b.y, b.z);
+        if (p) {
+            let r = b.radius * p.scale;
+            ctx.fillStyle = `rgba(130, 0, 0, ${0.4 + bloodIntensity * 0.5})`;
+            ctx.beginPath();
+            ctx.ellipse(p.x, p.y, r, r * (b.surface === 0 ? 0.3 : 1), 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Coulure de sang
+            if (b.surface !== 0) {
+                ctx.fillRect(p.x - r * 0.2, p.y, r * 0.4, r * (1 + b.drip * 2));
+            }
+        }
+    }
+
+    // Teinte générale rouge sang sur l'écran qui s'intensifie
+    if (bloodIntensity > 0.3) {
+        ctx.fillStyle = `rgba(120, 0, 0, ${(bloodIntensity - 0.3) * 0.4})`;
+        ctx.fillRect(0, 0, 640, 360);
+    }
+
+    // Effet 15ème porte : immersion totale de sang sur les bords
+    if (doorsOpened >= 15) {
+        let vignette = ctx.createRadialGradient(320, 180, 50, 320, 180, 300);
+        vignette.addColorStop(0, "transparent");
+        vignette.addColorStop(0.7, "rgba(80, 0, 0, 0.8)");
+        vignette.addColorStop(1, "rgba(150, 0, 0, 0.98)");
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, 640, 360);
+    }
 }
 
 // =================================
@@ -409,6 +502,9 @@ function corridor() {
         [-2.5,0,-40], [-2.5,3,-40], [2.5,3,-40], [2.5,0,-40]
     ], "#161616");
 
+    // Affichage du Sang
+    drawBloodOverlay();
+
     // Affichage des Portes Dynamiques
     doors.forEach(d => drawDoor(d));
 
@@ -419,7 +515,7 @@ function corridor() {
     // Brouillard
     let fog=ctx.createRadialGradient(320,180,70,320,180,350);
     fog.addColorStop(0,"transparent");
-    fog.addColorStop(1,"rgba(0,0,0,0.95)");
+    fog.addColorStop(1, doorsOpened >= 15 ? "rgba(40,0,0,0.95)" : "rgba(0,0,0,0.95)");
 
     ctx.fillStyle=fog;
     ctx.fillRect(0,0,640,360);
@@ -434,7 +530,7 @@ function corridor() {
 }
 
 // =================================
-// DESSIN DE PORTE ANIMÉE ET RECURSIVE
+// DESSIN DE PORTE
 // =================================
 
 function drawDoor(door) {
@@ -448,7 +544,6 @@ function drawDoor(door) {
         [x, 0, z], [x, 2.5, z], [x, 2.5, z - 2], [x, 0, z - 2]
     ], "#000");
 
-    // Si la porte s'ouvre, on aperçoit le "couloir infini" derrière
     if (door.openProgress > 0.05) {
         let innerX = x + side * 1.5;
         polygon([
@@ -456,7 +551,6 @@ function drawDoor(door) {
         ], "#181716");
     }
 
-    // Battant de porte orientable
     let dx = Math.sin(angle) * 1.8 * side;
     let dz = -Math.cos(angle) * 1.8;
 
@@ -487,7 +581,7 @@ function drawLamp(x,y,z) {
     ctx.fillStyle="#aaa";
     ctx.fillRect(p.x-s*.3,p.y-s*.1,s*.6,s*.12);
 
-    ctx.fillStyle="rgba(210,200,170,0.10)";
+    ctx.fillStyle= doorsOpened >= 15 ? "rgba(255,0,0,0.25)" : "rgba(210,200,170,0.10)";
     ctx.beginPath();
     ctx.ellipse(p.x,p.y+s*.8,s*1.5,s*2,0,0,Math.PI*2);
     ctx.fill();
