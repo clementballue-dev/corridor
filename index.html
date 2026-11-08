@@ -93,20 +93,23 @@ button:hover { background:#600; }
     font-size:20px;
 }
 
+/* Prompt d'action : sans rectangle, grand, blanc et étiré */
 #prompt {
     position:fixed;
     top:65%;
     left:50%;
     transform:translate(-50%,-50%);
-    color:#fff;
-    font-size:14px;
-    background:rgba(0,0,0,0.7);
-    padding:8px 16px;
-    border:1px solid #555;
+    color:#ffffff;
+    font-size:clamp(16px, 2vw, 22px);
+    font-weight:bold;
+    letter-spacing:4px;
+    text-shadow:0 0 10px rgba(0,0,0,0.9), 0 0 15px rgba(255,255,255,0.3);
     z-index:4;
     display:none;
     pointer-events:none;
-    letter-spacing:1px;
+    text-transform:uppercase;
+    text-align:center;
+    width:100%;
 }
 
 #loop-counter {
@@ -119,18 +122,18 @@ button:hover { background:#600; }
     letter-spacing:2px;
 }
 
-/* Message UI système : Sans rectangle, plus gros, blanc et très étiré */
+/* Message UI système : Sans rectangle, très grand, blanc et étiré */
 #game-message {
     position:fixed;
     top:35px;
     left:50%;
     transform:translateX(-50%);
     color:#ffffff;
-    font-size:clamp(18px, 2.5vw, 28px);
-    letter-spacing:6px;
+    font-size:clamp(20px, 3vw, 32px);
+    letter-spacing:8px;
     text-transform:uppercase;
     font-weight:bold;
-    text-shadow:0 0 10px rgba(0,0,0,0.9), 0 0 20px rgba(255,255,255,0.4);
+    text-shadow:0 0 12px rgba(0,0,0,0.9), 0 0 25px rgba(255,255,255,0.5);
     z-index:4;
     display:none;
     opacity:0;
@@ -329,7 +332,6 @@ function showTemporaryMessage() {
         gameMsgEl.style.opacity = "1";
     }, 10);
 
-    // Masque le message au bout de 3 secondes
     setTimeout(() => {
         gameMsgEl.style.opacity = "0";
         setTimeout(() => {
@@ -350,13 +352,11 @@ function openDoor(doorIndex) {
             doorsOpened++;
             loopNumEl.innerText = doorsOpened;
             
-            // Re-téléportation au début du couloir
             playerX = 0;
             playerZ = 2;
             yaw = 0;
             resetDoors();
             
-            // Afficher le message temporaire à la 10ème porte
             if (doorsOpened >= 10 && !messageShown) {
                 messageShown = true;
                 showTemporaryMessage();
