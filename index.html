@@ -1,163 +1,258 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Chat</title>
-
+<title>THE CORRIDOR</title>
 <style>
-*{
-margin:0;
-padding:0;
-box-sizing:border-box;
-font-family:Arial;
+* { margin:0; padding:0; }
+body { overflow:hidden; background:black; font-family:Arial; }
+canvas { display:block; }
+
+#ui {
+ position:absolute;
+ inset:0;
+ display:flex;
+ flex-direction:column;
+ align-items:center;
+ justify-content:center;
+ color:white;
+ background:rgba(0,0,0,.8);
+ z-index:10;
+ text-align:center;
 }
 
-body{
-background:#202123;
-display:flex;
-justify-content:center;
-align-items:center;
-height:100vh;
+h1 {
+ font-size:55px;
+ letter-spacing:12px;
+ text-shadow:0 0 15px #900;
 }
 
-.chat{
-width:900px;
-height:600px;
-background:#2b2d31;
-border-radius:15px;
-display:flex;
-overflow:hidden;
-box-shadow:0 0 20px rgba(0,0,0,.4);
+p { margin-top:20px; color:#aaa; }
+
+button {
+ margin-top:35px;
+ padding:15px 40px;
+ color:white;
+ background:#300;
+ border:1px solid #900;
+ cursor:pointer;
+ font-size:16px;
 }
 
-.left{
-width:250px;
-background:#1e1f22;
-padding:20px;
-color:white;
+button:hover { background:#700; }
+
+#black {
+ position:absolute;
+ inset:0;
+ background:black;
+ opacity:0;
+ pointer-events:none;
+ z-index:5;
+ transition:opacity 1s;
 }
 
-.left h2{
-margin-bottom:20px;
-}
-
-.user{
-padding:12px;
-background:#313338;
-margin-bottom:10px;
-border-radius:8px;
-cursor:pointer;
-}
-
-.right{
-flex:1;
-display:flex;
-flex-direction:column;
-}
-
-.messages{
-flex:1;
-padding:20px;
-overflow-y:auto;
-}
-
-.msg{
-background:#5865F2;
-padding:12px;
-color:white;
-margin-bottom:15px;
-border-radius:12px;
-width:max-content;
-max-width:70%;
-}
-
-.bottom{
-display:flex;
-padding:15px;
-background:#1e1f22;
-}
-
-input{
-flex:1;
-padding:15px;
-border:none;
-border-radius:10px;
-font-size:16px;
-}
-
-button{
-margin-left:10px;
-padding:15px 30px;
-background:#5865F2;
-color:white;
-border:none;
-border-radius:10px;
-cursor:pointer;
-font-size:16px;
+#instructions {
+ position:absolute;
+ bottom:20px;
+ left:20px;
+ color:#aaa;
+ font-size:12px;
 }
 </style>
-
 </head>
 <body>
 
-<div class="chat">
-
-<div class="left">
-<h2>Utilisateurs</h2>
-
-<div class="user">🟢 Alice</div>
-<div class="user">🟢 Bob</div>
-<div class="user">🟢 Thomas</div>
-
+<div id="ui">
+ <h1>THE CORRIDOR</h1>
+ <p>Tu es seul dans ce couloir...</p>
+ <button onclick="start()">ENTRER</button>
 </div>
 
-<div class="right">
+<div id="black"></div>
+<div id="instructions"></div>
 
-<div class="messages" id="messages">
+<script type="module">
+import * as THREE from
+'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 
-<div class="msg">Bonjour 👋</div>
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+scene.fog = new THREE.FogExp2(0x000000,0.055);
 
-</div>
+const camera = new THREE.PerspectiveCamera(
+ 75,innerWidth/innerHeight,0.1,100
+);
+camera.position.set(0,1.6,4);
 
-<div class="bottom">
+const renderer = new THREE.WebGLRenderer({
+ antialias:false
+});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(0.7);
+document.body.appendChild(renderer.domElement);
 
-<input
-id="message"
-placeholder="Écrire un message..."
->
+// Lumière
+scene.add(new THREE.AmbientLight(0x222222));
 
-<button onclick="envoyer()">
-Envoyer
-</button>
+const light = new THREE.PointLight(0xffddaa,8,12);
+light.position.set(0,2,1);
+scene.add(light);
 
-</div>
+// Matériaux
+const wallMat = new THREE.MeshStandardMaterial({
+ color:0x252525,
+ roughness:1
+});
+const floorMat = new THREE.MeshStandardMaterial({
+ color:0x151515,
+ roughness:1
+});
 
-</div>
-
-</div>
-
-<script>
-
-function envoyer(){
-
-let texte=document.getElementById("message").value;
-
-if(texte=="") return;
-
-let zone=document.getElementById("messages");
-
-zone.innerHTML+=`
-<div class="msg">${texte}</div>
-`;
-
-document.getElementById("message").value="";
-
-zone.scrollTop=zone.scrollHeight;
-
+// Création du couloir
+function box(w,h,d,x,y,z,mat) {
+ const mesh = new THREE.Mesh(
+  new THREE.BoxGeometry(w,h,d),mat
+ );
+ mesh.position.set(x,y,z);
+ scene.add(mesh);
+ return mesh;
 }
 
-</script>
+box(6,0.2,35,0,-0.1,-13,floorMat);
+box(6,0.2,35,0,3.2,-13,wallMat);
+box(0.2,3.2,35,-3,1.5,-13,wallMat);
+box(0.2,3.2,35,3,1.5,-13,wallMat);
+box(6,3.2,0.2,0,1.5,-30,wallMat);
 
+// Lumière lointaine
+const endLight = new THREE.PointLight(0x777777,3,8);
+endLight.position.set(0,2,-25);
+scene.add(endLight);
+
+// Créature
+const monster = new THREE.Group();
+scene.add(monster);
+
+const dark = new THREE.MeshStandardMaterial({
+ color:0x050505,
+ roughness:1
+});
+
+const body = new THREE.Mesh(
+ new THREE.CapsuleGeometry(0.45,1.1,4,6),dark
+);
+body.position.y=1;
+monster.add(body);
+
+const head = new THREE.Mesh(
+ new THREE.SphereGeometry(0.42,6,5),dark
+);
+head.position.y=2;
+monster.add(head);
+
+// Yeux
+const eyeMat = new THREE.MeshBasicMaterial({color:0xaa0000});
+
+for(let x of [-0.16,0.16]) {
+ const eye = new THREE.Mesh(
+  new THREE.SphereGeometry(0.055,5,5),eyeMat
+ );
+ eye.position.set(x,2.05,-0.36);
+ monster.add(eye);
+}
+
+monster.position.set(0,0,-25);
+monster.visible=false;
+
+// Variables
+let firstTime=true;
+let playing=false;
+let monsterDistance=0;
+let playerSpeed=0;
+let keys={};
+
+document.addEventListener("keydown",e=>{
+ keys[e.key.toLowerCase()]=true;
+});
+document.addEventListener("keyup",e=>{
+ keys[e.key.toLowerCase()]=false;
+});
+
+function start() {
+ document.getElementById("ui").style.display="none";
+ document.getElementById("black").style.opacity=0;
+
+ camera.position.set(0,1.6,4);
+ camera.rotation.set(0,0,0);
+
+ monsterDistance=0;
+ monster.position.set(0,0,-25);
+ monster.visible=false;
+
+ playing=true;
+
+ document.getElementById("instructions").innerText =
+ firstTime ? "" : "ZQSD / FLÈCHES : BOUGER";
+}
+
+function endGame() {
+ playing=false;
+ document.getElementById("black").style.opacity=1;
+
+ setTimeout(()=>{
+  document.getElementById("ui").innerHTML=`
+   <h1>THE CORRIDOR</h1>
+   <p>${firstTime ? "..." : "Tu n'aurais jamais dû revenir."}</p>
+   <button onclick="start()">RECOMMENCER</button>
+  `;
+  document.getElementById("ui").style.display="flex";
+
+  if(firstTime) firstTime=false;
+ },1800);
+}
+
+function update() {
+ if(!playing) return;
+
+ if(firstTime) {
+  monster.visible=true;
+  monsterDistance+=0.035;
+  monster.position.z=-25+monsterDistance*20;
+  monster.scale.setScalar(1+monsterDistance*0.5);
+
+  if(monsterDistance>1.05) endGame();
+
+ } else {
+  const speed=0.07;
+
+  if(keys["z"] || keys["arrowup"])
+   camera.position.z-=speed;
+  if(keys["s"] || keys["arrowdown"])
+   camera.position.z+=speed;
+  if(keys["q"] || keys["arrowleft"])
+   camera.position.x-=speed;
+  if(keys["d"] || keys["arrowright"])
+   camera.position.x+=speed;
+
+  camera.position.x=THREE.MathUtils.clamp(camera.position.x,-2.5,2.5);
+  camera.position.z=THREE.MathUtils.clamp(camera.position.z,-28,4);
+ }
+}
+
+function animate() {
+ requestAnimationFrame(animate);
+ update();
+ renderer.render(scene,camera);
+}
+
+animate();
+
+window.addEventListener("resize",()=>{
+ camera.aspect=innerWidth/innerHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(innerWidth,innerHeight);
+});
+</script>
 </body>
 </html>
-
