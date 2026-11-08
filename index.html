@@ -3,71 +3,92 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>THE CORRIDOR</title>
 
 <style>
-* {margin:0;padding:0;box-sizing:border-box}
+* { margin:0; padding:0; box-sizing:border-box; }
 
 body {
- background:#000;
- overflow:hidden;
- font-family:Arial;
+    background:#000;
+    overflow:hidden;
+    font-family:Arial,sans-serif;
 }
 
 canvas {
- width:100vw;
- height:100vh;
- display:block;
- image-rendering:pixelated;
+    display:block;
+    width:100vw;
+    height:100vh;
+    image-rendering:pixelated;
 }
 
 #menu {
- position:absolute;
- inset:0;
- z-index:10;
- background:#050505;
- color:white;
- display:flex;
- flex-direction:column;
- align-items:center;
- justify-content:center;
- text-align:center;
+    position:fixed;
+    inset:0;
+    z-index:10;
+    background:#030303;
+    color:white;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
 }
 
 h1 {
- font-size:clamp(35px,7vw,65px);
- letter-spacing:12px;
- text-shadow:0 0 15px red;
+    font-size:clamp(35px,7vw,65px);
+    letter-spacing:10px;
+    color:#ddd;
+    text-shadow:0 0 20px #700;
 }
 
-p {color:#aaa;margin-top:20px}
+p {
+    color:#888;
+    margin-top:20px;
+}
 
 button {
- background:#300;
- border:1px solid #900;
- color:white;
- padding:16px 45px;
- margin-top:35px;
- font-size:18px;
- cursor:pointer;
+    background:#250000;
+    color:white;
+    border:1px solid #800;
+    padding:16px 45px;
+    margin-top:35px;
+    font-size:18px;
+    cursor:pointer;
 }
 
+button:hover { background:#600; }
+
 #black {
- position:absolute;
- inset:0;
- background:black;
- opacity:0;
- pointer-events:none;
- z-index:5;
+    position:fixed;
+    inset:0;
+    background:black;
+    opacity:0;
+    pointer-events:none;
+    z-index:5;
+    transition:opacity 1s;
 }
 
 #help {
- position:absolute;
- bottom:20px;
- left:20px;
- color:white;
- font-size:13px;
+    position:fixed;
+    bottom:15px;
+    left:15px;
+    color:#aaa;
+    font-size:12px;
+    z-index:4;
+    line-height:1.7;
+    text-shadow:0 0 5px black;
+}
+
+#crosshair {
+    position:fixed;
+    top:50%;
+    left:50%;
+    color:#888;
+    transform:translate(-50%,-50%);
+    z-index:3;
+    display:none;
+    pointer-events:none;
 }
 </style>
 </head>
@@ -75,268 +96,551 @@ button {
 <body>
 
 <div id="menu">
- <h1>THE CORRIDOR</h1>
- <p>Tu es seul...</p>
- <button id="enter">ENTRER</button>
+    <h1>THE CORRIDOR</h1>
+    <p>Tu es seul...</p>
+    <button id="enter">ENTRER</button>
 </div>
 
 <div id="black"></div>
 <div id="help"></div>
+<div id="crosshair">+</div>
 
 <canvas id="game"></canvas>
 
 <script>
-const canvas=document.getElementById("game");
-const ctx=canvas.getContext("2d");
+"use strict";
 
-canvas.width=640;
-canvas.height=360;
+// =================================
+// INITIALISATION
+// =================================
 
-let playing=false;
-let second=false;
-let monster=0;
-let playerX=0;
-let playerY=0;
-let keys={};
-let scare=false;
-let scareTime=0;
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-const menu=document.getElementById("menu");
-const black=document.getElementById("black");
+canvas.width = 640;
+canvas.height = 360;
 
-document.getElementById("enter").addEventListener("click",start);
+const menu = document.getElementById("menu");
+const black = document.getElementById("black");
+const help = document.getElementById("help");
+const crosshair = document.getElementById("crosshair");
 
-function start(){
+let playing = false;
+let second = false;
+let monster = 0;
+let scare = false;
+let scareTime = 0;
 
- playing=true;
- scare=false;
- scareTime=0;
- monster=0;
- playerX=0;
- playerY=0;
+let playerX = 0;
+let playerZ = 2;
+let yaw = 0;
 
- black.style.opacity=0;
- menu.style.display="none";
+let keys = {};
+let lastTime = 0;
 
- document.getElementById("help").innerText=
- second ? "ZQSD / FLÈCHES : BOUGER" : "";
+// =================================
+// CLAVIER
+// =================================
 
-}
+document.addEventListener("keydown", e => {
+    keys[e.key.toLowerCase()] = true;
 
-document.addEventListener("keydown",e=>{
- keys[e.key.toLowerCase()]=true;
+    if(["arrowup","arrowdown","arrowleft","arrowright"," "].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+    }
 });
 
-document.addEventListener("keyup",e=>{
- keys[e.key.toLowerCase()]=false;
+document.addEventListener("keyup", e => {
+    keys[e.key.toLowerCase()] = false;
 });
 
-function corridor(){
+// =================================
+// LANCEMENT
+// =================================
 
- ctx.fillStyle="#030303";
- ctx.fillRect(0,0,640,360);
+document.getElementById("enter").addEventListener("click", start);
 
- // plafond
- ctx.fillStyle="#101010";
- ctx.beginPath();
- ctx.moveTo(0,0);
- ctx.lineTo(640,0);
- ctx.lineTo(430,125);
- ctx.lineTo(210,125);
- ctx.fill();
+function start() {
 
- // mur gauche
- ctx.fillStyle="#181818";
- ctx.beginPath();
- ctx.moveTo(0,0);
- ctx.lineTo(210,125);
- ctx.lineTo(210,360);
- ctx.lineTo(0,360);
- ctx.fill();
+    playing = true;
+    scare = false;
+    scareTime = 0;
+    monster = 0;
 
- // mur droit
- ctx.fillStyle="#151515";
- ctx.beginPath();
- ctx.moveTo(640,0);
- ctx.lineTo(430,125);
- ctx.lineTo(430,360);
- ctx.lineTo(640,360);
- ctx.fill();
+    playerX = 0;
+    playerZ = 2;
+    yaw = 0;
+    keys = {};
 
- // sol
- ctx.fillStyle="#242424";
- ctx.beginPath();
- ctx.moveTo(0,360);
- ctx.lineTo(210,125);
- ctx.lineTo(430,125);
- ctx.lineTo(640,360);
- ctx.fill();
+    black.style.opacity = "0";
+    menu.style.display = "none";
 
- // porte du fond
- ctx.fillStyle="#050505";
- ctx.fillRect(250,125,140,110);
-
- // lumière
- let glow=ctx.createRadialGradient(320,150,5,320,150,150);
- glow.addColorStop(0,"#555");
- glow.addColorStop(1,"transparent");
- ctx.fillStyle=glow;
- ctx.fillRect(150,40,340,250);
-
- // vignette
- let v=ctx.createRadialGradient(320,180,50,320,180,330);
- v.addColorStop(0,"transparent");
- v.addColorStop(1,"black");
- ctx.fillStyle=v;
- ctx.fillRect(0,0,640,360);
+    if(second) {
+        help.innerHTML =
+        "ZQSD : BOUGER<br>FLÈCHES GAUCHE/DROITE : REGARDER<br>CLIQUE POUR UTILISER LA SOURIS";
+        crosshair.style.display = "block";
+    } else {
+        help.innerHTML = "";
+        crosshair.style.display = "none";
+    }
 }
 
-function drawMonster(){
+// =================================
+// PROJECTION 3D FAUSSE 3D
+// =================================
 
- let size=18+monster*65;
- let x=320-playerX*35;
- let y=180+monster*75;
+function project(x,y,z) {
 
- ctx.save();
- ctx.translate(x,y);
- ctx.scale(size/35,size/35);
+    let dx = x-playerX;
+    let dz = z-playerZ;
 
- // corps
- ctx.fillStyle="#020202";
- ctx.beginPath();
- ctx.ellipse(0,25,19,48,0,0,Math.PI*2);
- ctx.fill();
+    let cos = Math.cos(yaw);
+    let sin = Math.sin(yaw);
 
- // tête
- ctx.beginPath();
- ctx.ellipse(0,-32,19,24,0,0,Math.PI*2);
- ctx.fill();
+    let rx = dx*cos + dz*sin;
+    let depth = dx*sin - dz*cos;
 
- // bras longs
- ctx.strokeStyle="#020202";
- ctx.lineWidth=9;
- ctx.beginPath();
- ctx.moveTo(-15,0);
- ctx.lineTo(-34,65);
- ctx.moveTo(15,0);
- ctx.lineTo(34,65);
- ctx.stroke();
+    if(depth < 0.15) return null;
 
- // yeux rouges
- ctx.fillStyle="#ff0000";
- ctx.shadowColor="red";
- ctx.shadowBlur=15;
- ctx.beginPath();
- ctx.arc(-7,-34,3,0,Math.PI*2);
- ctx.arc(7,-34,3,0,Math.PI*2);
- ctx.fill();
+    const focal = 300;
 
- // bouche
- ctx.shadowBlur=0;
- ctx.fillStyle="#000";
- ctx.fillRect(-7,-18,14,13);
-
- ctx.restore();
+    return {
+        x:320 + rx*focal/depth,
+        y:180 + (1.55-y)*focal/depth,
+        scale:focal/depth,
+        depth:depth
+    };
 }
 
-function draw(){
+// =================================
+// DESSINER UN POLYGONE
+// =================================
 
- corridor();
+function polygon(points,color) {
 
- if(playing){
+    let projected = points.map(p =>
+        project(p[0],p[1],p[2])
+    );
 
-  if(!second && !scare){
-   monster+=0.0035;
+    if(projected.some(p => !p)) return;
 
-   drawMonster();
+    ctx.fillStyle = color;
+    ctx.beginPath();
 
-   if(monster>0.85){
-    scare=true;
-    scareTime=0;
-   }
-  }
+    ctx.moveTo(projected[0].x,projected[0].y);
 
-  if(second){
+    for(let i=1;i<projected.length;i++) {
+        ctx.lineTo(projected[i].x,projected[i].y);
+    }
 
-   if(keys["z"]||keys["arrowup"]) playerY-=2;
-   if(keys["s"]||keys["arrowdown"]) playerY+=2;
-   if(keys["q"]||keys["arrowleft"]) playerX-=2;
-   if(keys["d"]||keys["arrowright"]) playerX+=2;
+    ctx.closePath();
+    ctx.fill();
+}
 
-   playerX=Math.max(-2,Math.min(2,playerX));
-   playerY=Math.max(-40,Math.min(40,playerY));
+// =================================
+// TEXTURES DU COULOIR
+// =================================
 
-   ctx.fillStyle="#080808";
-   ctx.fillRect(0,0,640,360);
-   corridor();
+function corridor() {
 
-  }
-
-  if(scare){
-
-   scareTime++;
-
-   ctx.fillStyle="#000";
-   ctx.fillRect(0,0,640,360);
-
-   ctx.save();
-   ctx.translate(320,180);
-   ctx.scale(4+scareTime*.15,4+scareTime*.15);
-
-   ctx.fillStyle="#020202";
-   ctx.beginPath();
-   ctx.ellipse(0,0,35,55,0,0,Math.PI*2);
-   ctx.fill();
-
-   ctx.fillStyle="red";
-   ctx.shadowColor="red";
-   ctx.shadowBlur=25;
-   ctx.beginPath();
-   ctx.arc(-12,-15,5,0,Math.PI*2);
-   ctx.arc(12,-15,5,0,Math.PI*2);
-   ctx.fill();
-
-   ctx.restore();
-
-   if(scareTime%5===0){
-    ctx.fillStyle="#400";
+    ctx.fillStyle = "#030303";
     ctx.fillRect(0,0,640,360);
-   }
 
-   if(scareTime>35){
-    finish();
-   }
-  }
+    // Fond lumineux lointain
+    let glow = ctx.createRadialGradient(
+        320,130,2,320,130,190
+    );
 
- }
+    glow.addColorStop(0,"#777");
+    glow.addColorStop(0.25,"#393939");
+    glow.addColorStop(1,"#000");
 
- requestAnimationFrame(draw);
+    ctx.fillStyle = glow;
+    ctx.fillRect(100,0,440,300);
+
+    // Segments du couloir
+    for(let z=-40;z<playerZ;z+=4) {
+
+        let z2 = z+4;
+
+        // Sol
+        polygon([
+            [-2.5,0,z],
+            [2.5,0,z],
+            [2.5,0,z2],
+            [-2.5,0,z2]
+        ], "#242321");
+
+        // Plafond
+        polygon([
+            [-2.5,3,z2],
+            [2.5,3,z2],
+            [2.5,3,z],
+            [-2.5,3,z]
+        ], "#111110");
+
+        // Mur gauche
+        polygon([
+            [-2.5,0,z2],
+            [-2.5,3,z2],
+            [-2.5,3,z],
+            [-2.5,0,z]
+        ], "#292827");
+
+        // Mur droit
+        polygon([
+            [2.5,0,z],
+            [2.5,3,z],
+            [2.5,3,z2],
+            [2.5,0,z2]
+        ], "#20201f");
+
+        // Joints du sol
+        let line1=project(-2.5,0,z);
+        let line2=project(2.5,0,z);
+
+        if(line1 && line2) {
+            ctx.strokeStyle="#383634";
+            ctx.lineWidth=1;
+            ctx.beginPath();
+            ctx.moveTo(line1.x,line1.y);
+            ctx.lineTo(line2.x,line2.y);
+            ctx.stroke();
+        }
+
+        // Joints des murs
+        let a=project(-2.5,0,z);
+        let b=project(-2.5,3,z);
+
+        if(a && b) {
+            ctx.strokeStyle="#343230";
+            ctx.beginPath();
+            ctx.moveTo(a.x,a.y);
+            ctx.lineTo(b.x,b.y);
+            ctx.stroke();
+        }
+    }
+
+    // Mur du fond
+    polygon([
+        [-2.5,0,-40],
+        [-2.5,3,-40],
+        [2.5,3,-40],
+        [2.5,0,-40]
+    ], "#161616");
+
+    // PORTES SUR LES CÔTÉS
+    drawDoor(2.48,-9);
+    drawDoor(2.48,-21);
+    drawDoor(-2.48,-15);
+
+    // Lumières au plafond
+    drawLamp(0,2.94,-12);
+    drawLamp(0,2.94,-29);
+
+    // Brouillard
+    let fog=ctx.createRadialGradient(
+        320,180,70,320,180,350
+    );
+
+    fog.addColorStop(0,"transparent");
+    fog.addColorStop(1,"rgba(0,0,0,0.95)");
+
+    ctx.fillStyle=fog;
+    ctx.fillRect(0,0,640,360);
+
+    // Grain rétro
+    for(let i=0;i<250;i++) {
+        let x=Math.random()*640;
+        let y=Math.random()*360;
+
+        ctx.fillStyle=Math.random()>.5
+            ?"rgba(255,255,255,0.025)"
+            :"rgba(0,0,0,0.08)";
+
+        ctx.fillRect(x,y,2,2);
+    }
 }
 
-function finish(){
+// =================================
+// PORTES
+// =================================
 
- playing=false;
- scare=false;
+function drawDoor(x,z) {
 
- black.style.opacity=1;
+    let side=x>0 ? 1:-1;
 
- setTimeout(()=>{
-  second=true;
-  menu.innerHTML=`
-   <h1>THE CORRIDOR</h1>
-   <p>Tu pensais que c'était fini ?</p>
-   <button id="again">RETOURNER</button>
-  `;
-  menu.style.display="flex";
+    polygon([
+        [x,0,z],
+        [x,2.5,z],
+        [x,2.5,z-2],
+        [x,0,z-2]
+    ],"#090909");
 
-  document.getElementById("again")
-  .addEventListener("click",start);
+    polygon([
+        [x-side*.02,.15,z-.2],
+        [x-side*.02,2.35,z-.2],
+        [x-side*.02,2.35,z-1.8],
+        [x-side*.02,.15,z-1.8]
+    ],"#191817");
 
- },1200);
+    let handle=project(x-side*.05,1,z-1.5);
+
+    if(handle) {
+        ctx.fillStyle="#777";
+        ctx.fillRect(handle.x-2,handle.y-2,4,4);
+    }
 }
+
+// =================================
+// LAMPES
+// =================================
+
+function drawLamp(x,y,z) {
+
+    const p=project(x,y,z);
+    if(!p) return;
+
+    let s=p.scale;
+
+    ctx.fillStyle="#aaa";
+    ctx.fillRect(p.x-s*.3,p.y-s*.1,s*.6,s*.12);
+
+    ctx.fillStyle="rgba(210,200,170,0.10)";
+    ctx.beginPath();
+    ctx.ellipse(p.x,p.y+s*.8,s*1.5,s*2,0,0,Math.PI*2);
+    ctx.fill();
+}
+
+// =================================
+// MONSTRE
+// =================================
+
+function drawMonster() {
+
+    let z=-30+monster*27;
+    let p=project(0,1.5,z);
+
+    if(!p) return;
+
+    let s=p.scale;
+
+    ctx.save();
+    ctx.translate(p.x,p.y);
+
+    // Ombre
+    ctx.fillStyle="#020202";
+
+    // Corps
+    ctx.beginPath();
+    ctx.ellipse(0,0,s*.4,s*1.05,0,0,Math.PI*2);
+    ctx.fill();
+
+    // Tête
+    ctx.beginPath();
+    ctx.ellipse(0,-s*1.1,s*.36,s*.45,0,0,Math.PI*2);
+    ctx.fill();
+
+    // Bras très longs
+    ctx.strokeStyle="#020202";
+    ctx.lineWidth=Math.max(2,s*.18);
+    ctx.beginPath();
+    ctx.moveTo(-s*.3,-s*.3);
+    ctx.lineTo(-s*.85,s*1.7);
+    ctx.moveTo(s*.3,-s*.3);
+    ctx.lineTo(s*.85,s*1.7);
+    ctx.stroke();
+
+    // Yeux
+    ctx.fillStyle="#ff0000";
+    ctx.shadowColor="red";
+    ctx.shadowBlur=15;
+
+    ctx.beginPath();
+    ctx.arc(-s*.13,-s*1.15,Math.max(2,s*.06),0,Math.PI*2);
+    ctx.arc(s*.13,-s*1.15,Math.max(2,s*.06),0,Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+// =================================
+// JUMPSCARE
+// =================================
+
+function drawScare() {
+
+    scareTime++;
+
+    ctx.fillStyle="#000";
+    ctx.fillRect(0,0,640,360);
+
+    ctx.save();
+
+    let shake=Math.random()*12-6;
+    ctx.translate(320+shake,180+shake);
+
+    let s=4+scareTime*.17;
+
+    ctx.scale(s,s);
+
+    ctx.fillStyle="#020202";
+
+    ctx.beginPath();
+    ctx.ellipse(0,0,35,55,0,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle="red";
+    ctx.shadowColor="red";
+    ctx.shadowBlur=30;
+
+    ctx.beginPath();
+    ctx.arc(-12,-15,5,0,Math.PI*2);
+    ctx.arc(12,-15,5,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+
+    if(scareTime%5===0) {
+        ctx.fillStyle="#400";
+        ctx.fillRect(0,0,640,360);
+    }
+
+    if(scareTime>35) {
+        finish();
+    }
+}
+
+// =================================
+// FIN DU PREMIER PASSAGE
+// =================================
+
+function finish() {
+
+    playing=false;
+    scare=false;
+
+    black.style.opacity="1";
+
+    document.exitPointerLock?.();
+
+    setTimeout(()=>{
+
+        second=true;
+
+        menu.innerHTML=`
+            <h1>THE CORRIDOR</h1>
+            <p>Cette fois, tu peux avancer...</p>
+            <button id="again">RETOURNER</button>
+        `;
+
+        menu.style.display="flex";
+
+        document.getElementById("again")
+            .addEventListener("click",start);
+
+    },1300);
+}
+
+// =================================
+// DÉPLACEMENTS
+// =================================
+
+function movement(dt) {
+
+    let speed=2.5*dt;
+
+    // Avancer
+    if(keys["z"] || keys["w"] || keys["arrowup"]) {
+        playerX+=Math.sin(yaw)*speed;
+        playerZ-=Math.cos(yaw)*speed;
+    }
+
+    // Reculer
+    if(keys["s"] || keys["arrowdown"]) {
+        playerX-=Math.sin(yaw)*speed;
+        playerZ+=Math.cos(yaw)*speed;
+    }
+
+    // Gauche
+    if(keys["q"] || keys["a"]) {
+        playerX-=Math.cos(yaw)*speed;
+        playerZ-=Math.sin(yaw)*speed;
+    }
+
+    // Droite
+    if(keys["d"]) {
+        playerX+=Math.cos(yaw)*speed;
+        playerZ+=Math.sin(yaw)*speed;
+    }
+
+    // Rotation
+    if(keys["arrowleft"]) yaw-=1.7*dt;
+    if(keys["arrowright"]) yaw+=1.7*dt;
+
+    // Limites du couloir
+    playerX=Math.max(-1.8,Math.min(1.8,playerX));
+    playerZ=Math.max(-37,Math.min(2,playerZ));
+}
+
+// Souris facultative
+canvas.addEventListener("click",()=>{
+    if(playing && second) {
+        canvas.requestPointerLock?.();
+    }
+});
+
+document.addEventListener("mousemove",e=>{
+    if(document.pointerLockElement===canvas && playing && second) {
+        yaw+=e.movementX*0.002;
+    }
+});
+
+// =================================
+// BOUCLE PRINCIPALE
+// =================================
+
+function draw(time=0) {
+
+    let dt=Math.min((time-lastTime)/1000,.05);
+    lastTime=time;
+
+    if(!playing) {
+        corridor();
+        requestAnimationFrame(draw);
+        return;
+    }
+
+    corridor();
+
+    if(!second && !scare) {
+
+        monster+=dt*.17;
+
+        drawMonster();
+
+        if(monster>=.94) {
+            scare=true;
+            scareTime=0;
+        }
+    }
+
+    if(scare) {
+        drawScare();
+    }
+
+    if(second) {
+        movement(dt);
+    }
+
+    requestAnimationFrame(draw);
+}
+
+// LANCEMENT DU RENDU
 
 draw();
 
 </script>
 </body>
 </html>
+
