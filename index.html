@@ -3,62 +3,54 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>THE CORRIDOR</title>
 
 <style>
-* {
- margin:0;
- padding:0;
- box-sizing:border-box;
-}
+* {margin:0;padding:0;box-sizing:border-box}
 
 body {
+ background:#000;
  overflow:hidden;
- background:black;
  font-family:Arial;
 }
 
 canvas {
+ width:100vw;
+ height:100vh;
  display:block;
+ image-rendering:pixelated;
 }
 
-#ui {
+#menu {
  position:absolute;
  inset:0;
+ z-index:10;
+ background:#050505;
+ color:white;
  display:flex;
  flex-direction:column;
  align-items:center;
  justify-content:center;
- color:white;
- background:rgba(0,0,0,.9);
- z-index:10;
  text-align:center;
 }
 
 h1 {
- font-size:55px;
+ font-size:clamp(35px,7vw,65px);
  letter-spacing:12px;
- text-shadow:0 0 15px #900;
+ text-shadow:0 0 15px red;
 }
 
-p {
- margin-top:20px;
- color:#aaa;
-}
+p {color:#aaa;margin-top:20px}
 
 button {
- margin-top:35px;
- padding:15px 40px;
- color:white;
  background:#300;
  border:1px solid #900;
+ color:white;
+ padding:16px 45px;
+ margin-top:35px;
+ font-size:18px;
  cursor:pointer;
- font-size:16px;
-}
-
-button:hover {
- background:#700;
 }
 
 #black {
@@ -68,282 +60,283 @@ button:hover {
  opacity:0;
  pointer-events:none;
  z-index:5;
- transition:opacity 1s;
 }
 
-#instructions {
+#help {
  position:absolute;
  bottom:20px;
  left:20px;
- color:#aaa;
- z-index:2;
- font-size:12px;
+ color:white;
+ font-size:13px;
 }
 </style>
 </head>
 
 <body>
 
-<div id="ui">
+<div id="menu">
  <h1>THE CORRIDOR</h1>
- <p>Tu es seul dans ce couloir...</p>
- <button id="startButton">ENTRER</button>
+ <p>Tu es seul...</p>
+ <button id="enter">ENTRER</button>
 </div>
 
 <div id="black"></div>
-<div id="instructions"></div>
+<div id="help"></div>
 
-<script type="module">
+<canvas id="game"></canvas>
 
-import * as THREE from
-'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x000000);
-scene.fog = new THREE.FogExp2(0x000000,0.055);
+canvas.width=640;
+canvas.height=360;
 
-const camera = new THREE.PerspectiveCamera(
-75,innerWidth/innerHeight,0.1,100
-);
-
-camera.position.set(0,1.6,4);
-
-const renderer = new THREE.WebGLRenderer({
-antialias:false
-});
-
-renderer.setSize(innerWidth,innerHeight);
-renderer.setPixelRatio(0.7);
-document.body.appendChild(renderer.domElement);
-
-// LUMIÈRES
-
-scene.add(new THREE.AmbientLight(0x222222));
-
-const light = new THREE.PointLight(0xffddaa,8,12);
-light.position.set(0,2,1);
-scene.add(light);
-
-const endLight = new THREE.PointLight(0x777777,3,8);
-endLight.position.set(0,2,-25);
-scene.add(endLight);
-
-// MATÉRIAUX
-
-const wallMat = new THREE.MeshStandardMaterial({
-color:0x252525,
-roughness:1
-});
-
-const floorMat = new THREE.MeshStandardMaterial({
-color:0x151515,
-roughness:1
-});
-
-// COULOIR
-
-function box(w,h,d,x,y,z,mat) {
-const mesh = new THREE.Mesh(
-new THREE.BoxGeometry(w,h,d),mat
-);
-mesh.position.set(x,y,z);
-scene.add(mesh);
-return mesh;
-}
-
-box(6,0.2,35,0,-0.1,-13,floorMat);
-box(6,0.2,35,0,3.2,-13,wallMat);
-box(0.2,3.2,35,-3,1.5,-13,wallMat);
-box(0.2,3.2,35,3,1.5,-13,wallMat);
-box(6,3.2,0.2,0,1.5,-30,wallMat);
-
-// CRÉATURE
-
-const monster = new THREE.Group();
-scene.add(monster);
-
-const dark = new THREE.MeshStandardMaterial({
-color:0x050505,
-roughness:1
-});
-
-const body = new THREE.Mesh(
-new THREE.CapsuleGeometry(0.45,1.1,4,6),dark
-);
-
-body.position.y=1;
-monster.add(body);
-
-const head = new THREE.Mesh(
-new THREE.SphereGeometry(0.42,6,5),dark
-);
-
-head.position.y=2;
-monster.add(head);
-
-// YEUX
-
-const eyeMat = new THREE.MeshBasicMaterial({
-color:0xaa0000
-});
-
-for(let x of [-0.16,0.16]) {
-const eye = new THREE.Mesh(
-new THREE.SphereGeometry(0.055,5,5),
-eyeMat
-);
-eye.position.set(x,2.05,-0.36);
-monster.add(eye);
-}
-
-monster.position.set(0,0,-25);
-monster.visible=false;
-
-// VARIABLES
-
-let firstTime=true;
 let playing=false;
-let monsterDistance=0;
+let second=false;
+let monster=0;
+let playerX=0;
+let playerY=0;
 let keys={};
+let scare=false;
+let scareTime=0;
 
-// BOUTON ENTRER CORRIGÉ
+const menu=document.getElementById("menu");
+const black=document.getElementById("black");
 
-document.getElementById("startButton")
-.addEventListener("click",start);
+document.getElementById("enter").addEventListener("click",start);
 
-// CLAVIER
+function start(){
+
+ playing=true;
+ scare=false;
+ scareTime=0;
+ monster=0;
+ playerX=0;
+ playerY=0;
+
+ black.style.opacity=0;
+ menu.style.display="none";
+
+ document.getElementById("help").innerText=
+ second ? "ZQSD / FLÈCHES : BOUGER" : "";
+
+}
 
 document.addEventListener("keydown",e=>{
-keys[e.key.toLowerCase()]=true;
+ keys[e.key.toLowerCase()]=true;
 });
 
 document.addEventListener("keyup",e=>{
-keys[e.key.toLowerCase()]=false;
+ keys[e.key.toLowerCase()]=false;
 });
 
-// LANCEMENT DU JEU
+function corridor(){
 
-function start() {
+ ctx.fillStyle="#030303";
+ ctx.fillRect(0,0,640,360);
 
-console.log("LE JEU DEMARRE !");
+ // plafond
+ ctx.fillStyle="#101010";
+ ctx.beginPath();
+ ctx.moveTo(0,0);
+ ctx.lineTo(640,0);
+ ctx.lineTo(430,125);
+ ctx.lineTo(210,125);
+ ctx.fill();
 
-document.getElementById("ui").style.display="none";
-document.getElementById("black").style.opacity=0;
+ // mur gauche
+ ctx.fillStyle="#181818";
+ ctx.beginPath();
+ ctx.moveTo(0,0);
+ ctx.lineTo(210,125);
+ ctx.lineTo(210,360);
+ ctx.lineTo(0,360);
+ ctx.fill();
 
-camera.position.set(0,1.6,4);
-camera.rotation.set(0,0,0);
+ // mur droit
+ ctx.fillStyle="#151515";
+ ctx.beginPath();
+ ctx.moveTo(640,0);
+ ctx.lineTo(430,125);
+ ctx.lineTo(430,360);
+ ctx.lineTo(640,360);
+ ctx.fill();
 
-monsterDistance=0;
-monster.position.set(0,0,-25);
-monster.visible=false;
+ // sol
+ ctx.fillStyle="#242424";
+ ctx.beginPath();
+ ctx.moveTo(0,360);
+ ctx.lineTo(210,125);
+ ctx.lineTo(430,125);
+ ctx.lineTo(640,360);
+ ctx.fill();
 
-playing=true;
+ // porte du fond
+ ctx.fillStyle="#050505";
+ ctx.fillRect(250,125,140,110);
 
-document.getElementById("instructions").innerText =
-firstTime ? "" : "ZQSD / FLÈCHES : BOUGER";
+ // lumière
+ let glow=ctx.createRadialGradient(320,150,5,320,150,150);
+ glow.addColorStop(0,"#555");
+ glow.addColorStop(1,"transparent");
+ ctx.fillStyle=glow;
+ ctx.fillRect(150,40,340,250);
+
+ // vignette
+ let v=ctx.createRadialGradient(320,180,50,320,180,330);
+ v.addColorStop(0,"transparent");
+ v.addColorStop(1,"black");
+ ctx.fillStyle=v;
+ ctx.fillRect(0,0,640,360);
 }
 
-// FIN DU PASSAGE
+function drawMonster(){
 
-function endGame() {
+ let size=18+monster*65;
+ let x=320-playerX*35;
+ let y=180+monster*75;
 
-playing=false;
+ ctx.save();
+ ctx.translate(x,y);
+ ctx.scale(size/35,size/35);
 
-document.getElementById("black").style.opacity=1;
+ // corps
+ ctx.fillStyle="#020202";
+ ctx.beginPath();
+ ctx.ellipse(0,25,19,48,0,0,Math.PI*2);
+ ctx.fill();
 
-setTimeout(()=>{
+ // tête
+ ctx.beginPath();
+ ctx.ellipse(0,-32,19,24,0,0,Math.PI*2);
+ ctx.fill();
 
-document.getElementById("ui").innerHTML=`
-<h1>THE CORRIDOR</h1>
-<p>Tu pensais que c'était terminé ?</p>
-<button id="startButton">RECOMMENCER</button>
-`;
+ // bras longs
+ ctx.strokeStyle="#020202";
+ ctx.lineWidth=9;
+ ctx.beginPath();
+ ctx.moveTo(-15,0);
+ ctx.lineTo(-34,65);
+ ctx.moveTo(15,0);
+ ctx.lineTo(34,65);
+ ctx.stroke();
 
-document.getElementById("ui").style.display="flex";
+ // yeux rouges
+ ctx.fillStyle="#ff0000";
+ ctx.shadowColor="red";
+ ctx.shadowBlur=15;
+ ctx.beginPath();
+ ctx.arc(-7,-34,3,0,Math.PI*2);
+ ctx.arc(7,-34,3,0,Math.PI*2);
+ ctx.fill();
 
-document.getElementById("startButton")
-.addEventListener("click",start);
+ // bouche
+ ctx.shadowBlur=0;
+ ctx.fillStyle="#000";
+ ctx.fillRect(-7,-18,14,13);
 
-document.getElementById("instructions").innerText="";
-
-firstTime=false;
-
-},1800);
-
+ ctx.restore();
 }
 
-// MISE À JOUR
+function draw(){
 
-function update() {
+ corridor();
 
-if(!playing) return;
+ if(playing){
 
-if(firstTime) {
+  if(!second && !scare){
+   monster+=0.0035;
 
-monster.visible=true;
-monsterDistance+=0.008;
-monster.position.z=-25+monsterDistance*20;
+   drawMonster();
 
-monster.scale.setScalar(1+monsterDistance*0.5);
+   if(monster>0.85){
+    scare=true;
+    scareTime=0;
+   }
+  }
 
-if(monsterDistance>1.05) {
-endGame();
+  if(second){
+
+   if(keys["z"]||keys["arrowup"]) playerY-=2;
+   if(keys["s"]||keys["arrowdown"]) playerY+=2;
+   if(keys["q"]||keys["arrowleft"]) playerX-=2;
+   if(keys["d"]||keys["arrowright"]) playerX+=2;
+
+   playerX=Math.max(-2,Math.min(2,playerX));
+   playerY=Math.max(-40,Math.min(40,playerY));
+
+   ctx.fillStyle="#080808";
+   ctx.fillRect(0,0,640,360);
+   corridor();
+
+  }
+
+  if(scare){
+
+   scareTime++;
+
+   ctx.fillStyle="#000";
+   ctx.fillRect(0,0,640,360);
+
+   ctx.save();
+   ctx.translate(320,180);
+   ctx.scale(4+scareTime*.15,4+scareTime*.15);
+
+   ctx.fillStyle="#020202";
+   ctx.beginPath();
+   ctx.ellipse(0,0,35,55,0,0,Math.PI*2);
+   ctx.fill();
+
+   ctx.fillStyle="red";
+   ctx.shadowColor="red";
+   ctx.shadowBlur=25;
+   ctx.beginPath();
+   ctx.arc(-12,-15,5,0,Math.PI*2);
+   ctx.arc(12,-15,5,0,Math.PI*2);
+   ctx.fill();
+
+   ctx.restore();
+
+   if(scareTime%5===0){
+    ctx.fillStyle="#400";
+    ctx.fillRect(0,0,640,360);
+   }
+
+   if(scareTime>35){
+    finish();
+   }
+  }
+
+ }
+
+ requestAnimationFrame(draw);
 }
 
-} else {
+function finish(){
 
-const speed=0.07;
+ playing=false;
+ scare=false;
 
-if(keys["z"] || keys["arrowup"])
-camera.position.z-=speed;
+ black.style.opacity=1;
 
-if(keys["s"] || keys["arrowdown"])
-camera.position.z+=speed;
+ setTimeout(()=>{
+  second=true;
+  menu.innerHTML=`
+   <h1>THE CORRIDOR</h1>
+   <p>Tu pensais que c'était fini ?</p>
+   <button id="again">RETOURNER</button>
+  `;
+  menu.style.display="flex";
 
-if(keys["q"] || keys["arrowleft"])
-camera.position.x-=speed;
+  document.getElementById("again")
+  .addEventListener("click",start);
 
-if(keys["d"] || keys["arrowright"])
-camera.position.x+=speed;
-
-camera.position.x=THREE.MathUtils.clamp(
-camera.position.x,-2.5,2.5
-);
-
-camera.position.z=THREE.MathUtils.clamp(
-camera.position.z,-28,4
-);
-
+ },1200);
 }
 
-}
-
-// BOUCLE DU JEU
-
-function animate() {
-
-requestAnimationFrame(animate);
-
-update();
-
-renderer.render(scene,camera);
-
-}
-
-animate();
-
-// REDIMENSIONNEMENT
-
-window.addEventListener("resize",()=>{
-
-camera.aspect=innerWidth/innerHeight;
-camera.updateProjectionMatrix();
-
-renderer.setSize(innerWidth,innerHeight);
-
-});
+draw();
 
 </script>
 </body>
 </html>
-
