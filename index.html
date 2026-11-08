@@ -93,7 +93,7 @@ button:hover { background:#600; }
     font-size:20px;
 }
 
-/* Prompt d'action : sans rectangle, grand, blanc et étiré */
+/* Prompt d'action */
 #prompt {
     position:fixed;
     top:65%;
@@ -122,7 +122,7 @@ button:hover { background:#600; }
     letter-spacing:2px;
 }
 
-/* Message UI système : Sans rectangle, très grand, blanc et étiré */
+/* Message UI système temporaire (10eme porte) */
 #game-message {
     position:fixed;
     top:35px;
@@ -142,6 +142,27 @@ button:hover { background:#600; }
     transition:opacity 0.5s ease;
     width:100%;
 }
+
+/* Message 11ème porte : EN GROS ET ROUGE/BLANC */
+#turn-around-message {
+    position:fixed;
+    top:45%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    color:#ffffff;
+    font-size:clamp(32px, 5vw, 60px);
+    letter-spacing:12px;
+    text-transform:uppercase;
+    font-weight:bold;
+    text-shadow:0 0 20px #ff0000, 0 0 40px #800000;
+    z-index:4;
+    display:none;
+    opacity:0;
+    pointer-events:none;
+    text-align:center;
+    transition:opacity 0.4s ease;
+    width:100%;
+}
 </style>
 </head>
 
@@ -159,6 +180,7 @@ button:hover { background:#600; }
 <div id="prompt">APPUIE SUR [E] OU CLIQUE POUR OUVRIR</div>
 <div id="loop-counter">PORTES OUVERTES : <span id="loop-num">0</span></div>
 <div id="game-message">Arrête d'ouvrir les portes</div>
+<div id="turn-around-message">RETOURNE TOI</div>
 
 <canvas id="game"></canvas>
 
@@ -182,6 +204,7 @@ const crosshair = document.getElementById("crosshair");
 const promptEl = document.getElementById("prompt");
 const loopNumEl = document.getElementById("loop-num");
 const gameMsgEl = document.getElementById("game-message");
+const turnMsgEl = document.getElementById("turn-around-message");
 
 let playing = false;
 let second = false;
@@ -189,7 +212,10 @@ let monster = 0;
 let scare = false;
 let scareTime = 0;
 let doorsOpened = 0;
-let messageShown = false;
+
+let msg10Shown = false;
+let eventDoor11Active = false;
+let turnedAroundOnce = false;
 
 let playerX = 0;
 let playerZ = 2;
@@ -200,7 +226,6 @@ let lastTime = 0;
 let stepTimer = 0;
 let activeDoor = null;
 
-// Taches de sang fixes générées
 let bloodStains = [];
 
 let doors = [
@@ -225,7 +250,7 @@ function generateBloodStains() {
             y: Math.random() * 2.8,
             z: -Math.random() * 38,
             radius: 0.3 + Math.random() * 0.8,
-            surface: Math.floor(Math.random() * 3), // 0: sol, 1: mur gauche, 2: mur droit
+            surface: Math.floor(Math.random() * 3),
             drip: Math.random() * 0.5
         });
     }
@@ -257,6 +282,19 @@ function playSound(type) {
         gain.connect(audioCtx.destination);
         osc.start();
         osc.stop(audioCtx.currentTime + 0.5);
+    } else if (type === "scream") {
+        let osc = audioCtx.createOscillator();
+        let gain = audioCtx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+        osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.8);
+        gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.8);
     }
 }
 
@@ -295,7 +333,9 @@ function start() {
     scare = false;
     scareTime = 0;
     monster = 0;
-    messageShown = false;
+    msg10Shown = false;
+    eventDoor11Active = false;
+    turnedAroundOnce = false;
 
     playerX = 0;
     playerZ = 2;
@@ -309,6 +349,8 @@ function start() {
     menu.style.display = "none";
     gameMsgEl.style.display = "none";
     gameMsgEl.style.opacity = "0";
+    turnMsgEl.style.display = "none";
+    turnMsgEl.style.opacity = "0";
 
     if(second) {
         help.innerHTML = "ZQSD / WASD : BOUGER<br>FLÈCHES / SOURIS : REGARDER<br>[E] OU CLIC : OUVRIR PORTES";
@@ -328,16 +370,21 @@ function resetDoors() {
 
 function showTemporaryMessage() {
     gameMsgEl.style.display = "block";
-    setTimeout(() => {
-        gameMsgEl.style.opacity = "1";
-    }, 10);
-
+    setTimeout(() => { gameMsgEl.style.opacity = "1"; }, 10);
     setTimeout(() => {
         gameMsgEl.style.opacity = "0";
-        setTimeout(() => {
-            gameMsgEl.style.display = "none";
-        }, 500);
+        setTimeout(() => { gameMsgEl.style.display = "none"; }, 500);
     }, 3000);
+}
+
+function showTurnAroundMessage() {
+    turnMsgEl.style.display = "block";
+    setTimeout(() => { turnMsgEl.style.opacity = "1"; }, 10);
+}
+
+function hideTurnAroundMessage() {
+    turnMsgEl.style.opacity = "0";
+    setTimeout(() => { turnMsgEl.style.display = "none"; }, 400);
 }
 
 function openDoor(doorIndex) {
@@ -357,9 +404,16 @@ function openDoor(doorIndex) {
             yaw = 0;
             resetDoors();
             
-            if (doorsOpened >= 10 && !messageShown) {
-                messageShown = true;
+            // 10ème porte : Message "Arrête d'ouvrir les portes"
+            if (doorsOpened >= 10 && !msg10Shown) {
+                msg10Shown = true;
                 showTemporaryMessage();
+            }
+            
+            // 11ème porte : Événement "RETOURNER VOUS"
+            if (doorsOpened >= 11) {
+                eventDoor11Active = true;
+                showTurnAroundMessage();
             }
             
             black.style.opacity = "0";
@@ -601,9 +655,8 @@ function drawLamp(x,y,z) {
     ctx.fill();
 }
 
-function drawMonster() {
-    let z=-30+monster*27;
-    let p=project(0,1.5,z);
+function drawMonsterAt(x, y, z) {
+    let p=project(x, y, z);
     if(!p) return;
     let s=p.scale;
 
@@ -639,16 +692,21 @@ function drawMonster() {
     ctx.restore();
 }
 
+function drawMonster() {
+    let z=-30+monster*27;
+    drawMonsterAt(0, 1.5, z);
+}
+
 function drawScare() {
     scareTime++;
     ctx.fillStyle="#000";
     ctx.fillRect(0,0,640,360);
 
     ctx.save();
-    let shake=Math.random()*12-6;
+    let shake=Math.random()*16-8;
     ctx.translate(320+shake,180+shake);
 
-    let s=4+scareTime*.17;
+    let s=4.5+scareTime*.2;
     ctx.scale(s,s);
     ctx.fillStyle="#020202";
 
@@ -667,8 +725,8 @@ function drawScare() {
 
     ctx.restore();
 
-    if(scareTime%5===0) {
-        ctx.fillStyle="#400";
+    if(scareTime%4===0) {
+        ctx.fillStyle="#500";
         ctx.fillRect(0,0,640,360);
     }
 
@@ -687,8 +745,8 @@ function finish() {
         second=true;
         menu.innerHTML=`
             <h1>THE CORRIDOR</h1>
-            <p>Cette fois, tu peux avancer à l'infini...</p>
-            <button id="again">RETOURNER</button>
+            <p>Il t'a attrapé...</p>
+            <button id="again">RECOMMENCER</button>
         `;
         menu.style.display="flex";
         document.getElementById("again").addEventListener("click",start);
@@ -738,7 +796,7 @@ function movement(dt) {
     playerX=Math.max(-1.8,Math.min(1.8,playerX));
     playerZ=Math.max(-37,Math.min(2,playerZ));
 
-    // Détection de proximité des portes
+    // Détection de la proximité des portes
     activeDoor = null;
     doors.forEach((door, index) => {
         let dist = Math.hypot(playerX - door.x, playerZ - (door.z - 1));
@@ -755,6 +813,27 @@ function movement(dt) {
         promptEl.style.display = "block";
     } else {
         promptEl.style.display = "none";
+    }
+
+    // GESTION DE LA 11ème PORTE ET DU DOUBLE RETOURNEMENT
+    if (eventDoor11Active && !scare) {
+        // Normalisation de yaw entre -PI et PI
+        let normalizedYaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+
+        // Détecte si le joueur regarde en arrière (vers z > playerZ)
+        let isLookingBack = Math.abs(normalizedYaw) > 2.2;
+
+        if (isLookingBack && !turnedAroundOnce) {
+            turnedAroundOnce = true;
+            hideTurnAroundMessage();
+        }
+
+        // Si le joueur s'est retourné UNE FOIS et tente de se RE-RETOURNER devant
+        if (turnedAroundOnce && !isLookingBack) {
+            scare = true;
+            scareTime = 0;
+            playSound("scream");
+        }
     }
 }
 
@@ -797,7 +876,13 @@ function draw(time=0) {
         if(monster>=.94) {
             scare=true;
             scareTime=0;
+            playSound("scream");
         }
+    }
+
+    // 11ème porte : Dessin du monstre qui s'est faufilé DERRIÈRE le joueur
+    if(second && eventDoor11Active && turnedAroundOnce && !scare) {
+        drawMonsterAt(0, 1.55, playerZ + 2.8);
     }
 
     if(scare) {
