@@ -410,7 +410,7 @@ function openDoor(doorIndex) {
                 showTemporaryMessage();
             }
             
-            // 11ème porte : Événement "RETOURNER VOUS"
+            // 11ème porte : Événement "RETOURNE TOI"
             if (doorsOpened >= 11) {
                 eventDoor11Active = true;
                 showTurnAroundMessage();
@@ -655,8 +655,9 @@ function drawLamp(x,y,z) {
     ctx.fill();
 }
 
-function drawMonsterAt(x, y, z) {
-    let p=project(x, y, z);
+function drawMonster() {
+    let z=-30+monster*27;
+    let p=project(0,1.5,z);
     if(!p) return;
     let s=p.scale;
 
@@ -690,11 +691,6 @@ function drawMonsterAt(x, y, z) {
     ctx.fill();
 
     ctx.restore();
-}
-
-function drawMonster() {
-    let z=-30+monster*27;
-    drawMonsterAt(0, 1.5, z);
 }
 
 function drawScare() {
@@ -815,20 +811,17 @@ function movement(dt) {
         promptEl.style.display = "none";
     }
 
-    // GESTION DE LA 11ème PORTE ET DU DOUBLE RETOURNEMENT
+    // GESTION DE LA 11ème PORTE : QUAND IL SE RETOURNE PUIS SE RERETOURNE
     if (eventDoor11Active && !scare) {
-        // Normalisation de yaw entre -PI et PI
         let normalizedYaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
-
-        // Détecte si le joueur regarde en arrière (vers z > playerZ)
-        let isLookingBack = Math.abs(normalizedYaw) > 2.2;
+        let isLookingBack = Math.abs(normalizedYaw) > 2.2; // Le joueur regarde en arrière
 
         if (isLookingBack && !turnedAroundOnce) {
-            turnedAroundOnce = true;
+            turnedAroundOnce = true; // Il s'est retourné, il voit qu'il n'y a rien
             hideTurnAroundMessage();
         }
 
-        // Si le joueur s'est retourné UNE FOIS et tente de se RE-RETOURNER devant
+        // Il s'était retourné, et maintenant il se RERETOURNE vers l'avant -> SCREAMER !
         if (turnedAroundOnce && !isLookingBack) {
             scare = true;
             scareTime = 0;
@@ -878,11 +871,6 @@ function draw(time=0) {
             scareTime=0;
             playSound("scream");
         }
-    }
-
-    // 11ème porte : Dessin du monstre qui s'est faufilé DERRIÈRE le joueur
-    if(second && eventDoor11Active && turnedAroundOnce && !scare) {
-        drawMonsterAt(0, 1.55, playerZ + 2.8);
     }
 
     if(scare) {
