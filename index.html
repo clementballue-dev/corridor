@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -93,6 +94,7 @@ button:hover { background:#600; }
     font-size:20px;
 }
 
+/* Prompt d'action */
 #prompt {
     position:fixed;
     top:65%;
@@ -121,6 +123,7 @@ button:hover { background:#600; }
     letter-spacing:2px;
 }
 
+/* Message UI système temporaire (10eme porte) */
 #game-message {
     position:fixed;
     top:35px;
@@ -141,6 +144,7 @@ button:hover { background:#600; }
     width:100%;
 }
 
+/* Message 11ème porte : EN GROS ET ROUGE/BLANC */
 #dimension-subtitle {
     color:#c8c8a8;
     max-width:620px;
@@ -199,7 +203,7 @@ button:hover { background:#600; }
 "use strict";
 
 // =================================
-// INITIALISATION
+// INITIALISATION & AUDIO PROCEDURAL
 // =================================
 
 const canvas = document.getElementById("game");
@@ -238,12 +242,21 @@ let stepTimer = 0;
 let activeDoor = null;
 let activePortal = false;
 let dimension = "corridor";
+let scareCause = "intro";
+
+// Labyrinthe procédural : 31 x 31 cases, avec impasses et raccourcis.
+const MAZE_SIZE = 31;
+const MAZE_CELL = 3;
+let mazeGrid = [];
+const mazeStart = { r: 1, c: 1 };
+const mazeGoal = { r: MAZE_SIZE - 2, c: MAZE_SIZE - 2 };
+let mazePortal = { x: 0, z: 0, nx: 0, nz: -1 };
 
 let bloodStains = [];
 
 let doors = [
-    { id: 0, side: 1, x: 2.48, z: -9, openProgress: 0, opening: false },
-    { id: 1, side: 1, x: 2.48, z: -21, openProgress: 0, opening: false },
+    { id: 0, side: 1,  x: 2.48,  z: -9,  openProgress: 0, opening: false },
+    { id: 1, side: 1,  x: 2.48,  z: -21, openProgress: 0, opening: false },
     { id: 2, side: -1, x: -2.48, z: -15, openProgress: 0, opening: false }
 ];
 
@@ -257,7 +270,6 @@ function initAudio() {
 
 function generateBloodStains() {
     bloodStains = [];
-
     for(let i = 0; i < 40; i++) {
         bloodStains.push({
             x: (Math.random() - 0.5) * 4.8,
@@ -272,47 +284,39 @@ function generateBloodStains() {
 
 function playSound(type) {
     if (!audioCtx) return;
-
+    
     if (type === "step") {
         let osc = audioCtx.createOscillator();
         let gain = audioCtx.createGain();
-
         osc.type = "sine";
         osc.frequency.setValueAtTime(60 + Math.random() * 20, audioCtx.currentTime);
         gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
-
         osc.connect(gain);
         gain.connect(audioCtx.destination);
         osc.start();
         osc.stop(audioCtx.currentTime + 0.12);
-
     } else if (type === "door") {
         let osc = audioCtx.createOscillator();
         let gain = audioCtx.createGain();
-
         osc.type = "sawtooth";
         osc.frequency.setValueAtTime(120, audioCtx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.5);
         gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
-
         osc.connect(gain);
         gain.connect(audioCtx.destination);
         osc.start();
         osc.stop(audioCtx.currentTime + 0.5);
-
     } else if (type === "scream") {
         let osc = audioCtx.createOscillator();
         let gain = audioCtx.createGain();
-
         osc.type = "sawtooth";
         osc.frequency.setValueAtTime(800, audioCtx.currentTime);
         osc.frequency.linearRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
         osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.8);
         gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
-
         osc.connect(gain);
         gain.connect(audioCtx.destination);
         osc.start();
@@ -321,7 +325,7 @@ function playSound(type) {
 }
 
 // =================================
-// CLAVIER
+// CLAVIER & INTERACTIONS
 // =================================
 
 document.addEventListener("keydown", e => {
@@ -333,11 +337,8 @@ document.addEventListener("keydown", e => {
     }
 
     if(key === "e" && playing && second) {
-        if (activePortal) {
-            returnToCorridor();
-        } else if (activeDoor !== null) {
-            openDoor(activeDoor);
-        }
+        if (activePortal) returnToCorridor();
+        else if (activeDoor !== null) openDoor(activeDoor);
     }
 });
 
@@ -346,7 +347,7 @@ document.addEventListener("keyup", e => {
 });
 
 // =================================
-// LANCEMENT
+// LANCEMENT & REINITIALISATION
 // =================================
 
 document.getElementById("enter").addEventListener("click", () => {
@@ -361,7 +362,8 @@ function start() {
     scare = false;
     scareTime = 0;
     monster = 0;
-
+    doorsOpened = 0;
+    loopNumEl.innerText = "0";
     msg10Shown = false;
     eventDoor11Active = false;
     turnedAroundOnce = false;
@@ -376,10 +378,8 @@ function start() {
 
     black.style.opacity = "0";
     menu.style.display = "none";
-
     gameMsgEl.style.display = "none";
     gameMsgEl.style.opacity = "0";
-
     turnMsgEl.style.display = "none";
     turnMsgEl.style.opacity = "0";
 
@@ -396,9 +396,7 @@ function showDimensionMenu() {
     playing = false;
     activeDoor = null;
     activePortal = false;
-
     document.exitPointerLock?.();
-
     help.innerHTML = "";
     crosshair.style.display = "none";
     promptEl.style.display = "none";
@@ -408,36 +406,127 @@ function showDimensionMenu() {
         <p id="dimension-subtitle">11 portes ouvertes. Le couloir n'est plus le même.</p>
         <p id="dimension-note">CHOISIS TA PROCHAINE DIMENSION</p>
         <button id="backrooms-enter">ENTRER DANS LES BACKROOMS</button>
-        <p style="font-size:12px;color:#555;margin-top:18px">
-            Une sortie existe peut-être quelque part...
-        </p>
+        <p style="font-size:12px;color:#555;margin-top:18px">Une sortie existe peut-être quelque part...</p>
     `;
-
     menu.style.display = "flex";
     black.style.opacity = "0";
 
     document.getElementById("backrooms-enter").addEventListener("click", startBackrooms);
 }
 
+function generateMaze() {
+    // 1 = mur, 0 = passage. L'algorithme creuse un réseau connecté
+    // avec des branches, des culs-de-sac et quelques boucles optionnelles.
+    mazeGrid = Array.from({ length: MAZE_SIZE }, () => Array(MAZE_SIZE).fill(1));
+    const stack = [{ r: mazeStart.r, c: mazeStart.c }];
+    mazeGrid[mazeStart.r][mazeStart.c] = 0;
+    const directions = [[0, 2], [0, -2], [2, 0], [-2, 0]];
+
+    while (stack.length) {
+        const current = stack[stack.length - 1];
+        const choices = directions
+            .map(([dr, dc]) => ({ r: current.r + dr, c: current.c + dc, dr, dc }))
+            .filter(n => n.r > 0 && n.r < MAZE_SIZE - 1 && n.c > 0 && n.c < MAZE_SIZE - 1 && mazeGrid[n.r][n.c] === 1);
+
+        if (!choices.length) {
+            stack.pop();
+            continue;
+        }
+
+        const next = choices[Math.floor(Math.random() * choices.length)];
+        mazeGrid[current.r + next.dr / 2][current.c + next.dc / 2] = 0;
+        mazeGrid[next.r][next.c] = 0;
+        stack.push({ r: next.r, c: next.c });
+    }
+
+    // Ouvre quelques murs entre deux passages pour créer des boucles
+    // et plusieurs itinéraires possibles, sans supprimer les impasses.
+    for (let r = 1; r < MAZE_SIZE - 1; r++) {
+        for (let c = 1; c < MAZE_SIZE - 1; c++) {
+            if (mazeGrid[r][c] !== 1) continue;
+            const horizontal = mazeGrid[r][c - 1] === 0 && mazeGrid[r][c + 1] === 0;
+            const vertical = mazeGrid[r - 1][c] === 0 && mazeGrid[r + 1][c] === 0;
+            if ((horizontal || vertical) && Math.random() < 0.12) {
+                mazeGrid[r][c] = 0;
+            }
+        }
+    }
+
+    // Le portail se trouve à l'opposé du point de départ.
+    const gx = mazeGoal.c;
+    const gz = mazeGoal.r;
+    mazePortal.x = (gx - (MAZE_SIZE - 1) / 2) * MAZE_CELL;
+    mazePortal.z = (gz - (MAZE_SIZE - 1) / 2) * MAZE_CELL;
+
+    // Oriente le joueur vers la première ouverture du labyrinthe.
+    const firstDirections = [
+        { dr: -1, dc: 0, yaw: 0 },
+        { dr: 0, dc: 1, yaw: Math.PI / 2 },
+        { dr: 1, dc: 0, yaw: Math.PI },
+        { dr: 0, dc: -1, yaw: -Math.PI / 2 }
+    ];
+    const firstExit = firstDirections.find(d => mazeGrid[mazeStart.r + d.dr]?.[mazeStart.c + d.dc] === 0);
+    mazeInitialYaw = firstExit ? firstExit.yaw : 0;
+
+    // Trouve le côté du portail relié au dernier couloir.
+    const goalDirections = [
+        { dr: -1, dc: 0 }, { dr: 0, dc: 1 },
+        { dr: 1, dc: 0 }, { dr: 0, dc: -1 }
+    ];
+    const entrance = goalDirections.find(d => mazeGrid[gz + d.dr]?.[gx + d.dc] === 0) || { dr: -1, dc: 0 };
+    mazePortal.nx = entrance.dc;
+    mazePortal.nz = entrance.dr;
+}
+
+let mazeInitialYaw = 0;
+
+function mazeWorldX(c) {
+    return (c - (MAZE_SIZE - 1) / 2) * MAZE_CELL;
+}
+
+function mazeWorldZ(r) {
+    return (r - (MAZE_SIZE - 1) / 2) * MAZE_CELL;
+}
+
+function mazeCellAt(x, z) {
+    const c = Math.floor((x + MAZE_SIZE * MAZE_CELL / 2) / MAZE_CELL);
+    const r = Math.floor((z + MAZE_SIZE * MAZE_CELL / 2) / MAZE_CELL);
+    return { r, c };
+}
+
+function canWalkMaze(x, z) {
+    if (!mazeGrid.length) return false;
+    const radius = 0.42;
+    const d = radius * 0.7071;
+    const samples = [
+        [x, z], [x - radius, z], [x + radius, z],
+        [x, z - radius], [x, z + radius],
+        [x - d, z - d], [x + d, z - d],
+        [x - d, z + d], [x + d, z + d]
+    ];
+    return samples.every(([sx, sz]) => {
+        const cell = mazeCellAt(sx, sz);
+        return mazeGrid[cell.r]?.[cell.c] === 0;
+    });
+}
+
 function startBackrooms() {
+    generateMaze();
     dimension = "backrooms";
     playing = true;
-
+    second = true;
     scare = false;
     activeDoor = null;
     activePortal = false;
-
-    playerX = 0;
-    playerZ = 2;
-    yaw = 0;
+    playerX = mazeWorldX(mazeStart.c);
+    playerZ = mazeWorldZ(mazeStart.r);
+    yaw = mazeInitialYaw;
     keys = {};
-
     resetDoors();
 
     menu.style.display = "none";
     black.style.opacity = "0";
-
-    help.innerHTML = "ZQSD / WASD : BOUGER<br>FLÈCHES / SOURIS : REGARDER<br>[E] OU CLIC : UTILISER LE PORTAIL";
+    help.innerHTML = "ZQSD / WASD : EXPLORER<br>FLÈCHES / SOURIS : REGARDER<br>[E] OU CLIC : ENTRER DANS LE PORTAIL";
     crosshair.style.display = "block";
     promptEl.style.display = "none";
 }
@@ -447,29 +536,29 @@ function returnToCorridor() {
 
     playing = false;
     black.style.opacity = "1";
-
     document.exitPointerLock?.();
 
     setTimeout(() => {
         dimension = "corridor";
-
         doorsOpened = 0;
         loopNumEl.innerText = "0";
-
+        eventDoor11Active = false;
+        turnedAroundOnce = false;
+        turnMsgEl.style.display = "none";
+        turnMsgEl.style.opacity = "0";
+        gameMsgEl.style.display = "none";
+        gameMsgEl.style.opacity = "0";
         playerX = 0;
         playerZ = 2;
         yaw = 0;
         keys = {};
-
         activeDoor = null;
         activePortal = false;
-
         resetDoors();
         generateBloodStains();
 
         playing = true;
         black.style.opacity = "0";
-
         help.innerHTML = "ZQSD / WASD : BOUGER<br>FLÈCHES / SOURIS : REGARDER<br>[E] OU CLIC : OUVRIR PORTES";
         promptEl.style.display = "none";
     }, 900);
@@ -484,74 +573,54 @@ function resetDoors() {
 
 function showTemporaryMessage() {
     gameMsgEl.style.display = "block";
-
-    setTimeout(() => {
-        gameMsgEl.style.opacity = "1";
-    }, 10);
-
+    setTimeout(() => { gameMsgEl.style.opacity = "1"; }, 10);
     setTimeout(() => {
         gameMsgEl.style.opacity = "0";
-
-        setTimeout(() => {
-            gameMsgEl.style.display = "none";
-        }, 500);
+        setTimeout(() => { gameMsgEl.style.display = "none"; }, 500);
     }, 3000);
 }
 
 function showTurnAroundMessage() {
     turnMsgEl.style.display = "block";
-
-    setTimeout(() => {
-        turnMsgEl.style.opacity = "1";
-    }, 10);
+    setTimeout(() => { turnMsgEl.style.opacity = "1"; }, 10);
 }
 
 function hideTurnAroundMessage() {
     turnMsgEl.style.opacity = "0";
-
-    setTimeout(() => {
-        turnMsgEl.style.display = "none";
-    }, 400);
+    setTimeout(() => { turnMsgEl.style.display = "none"; }, 400);
 }
 
-// =================================
-// OUVERTURE DES PORTES
-// =================================
-
 function openDoor(doorIndex) {
-    if (doors[doorIndex].opening || dimension !== "corridor") return;
-
+    if (eventDoor11Active || doors[doorIndex].opening) return;
+    
     doors[doorIndex].opening = true;
     playSound("door");
-
+    
     setTimeout(() => {
         black.style.opacity = "1";
-
         setTimeout(() => {
             doorsOpened++;
             loopNumEl.innerText = doorsOpened;
-
-            // Après la 11e porte : changement de dimension.
-            if (doorsOpened >= 11) {
-                showDimensionMenu();
-                return;
-            }
-
+            
             playerX = 0;
             playerZ = 2;
             yaw = 0;
-
             resetDoors();
-
+            
+            // 10ème porte : Message "Arrête d'ouvrir les portes"
             if (doorsOpened >= 10 && !msg10Shown) {
                 msg10Shown = true;
                 showTemporaryMessage();
             }
-
+            
+            // 11ème porte : Événement "RETOURNE TOI"
+            if (doorsOpened >= 11) {
+                eventDoor11Active = true;
+                showTurnAroundMessage();
+            }
+            
             black.style.opacity = "0";
-
         }, 800);
-
     }, 400);
 }
 
@@ -583,7 +652,6 @@ function project(x,y,z) {
 
 function polygon(points,color) {
     let projected = points.map(p => project(p[0],p[1],p[2]));
-
     if(projected.some(p => !p)) return;
 
     ctx.fillStyle = color;
@@ -599,27 +667,20 @@ function polygon(points,color) {
 }
 
 // =================================
-// SANG ET AMBIANCE
+// DESSIN DU SANG
 // =================================
 
 function drawBloodOverlay() {
     if (doorsOpened < 2) return;
 
     let bloodIntensity = Math.min(1, (doorsOpened - 1) / 9);
-    let visibleStainsCount = Math.floor(bloodStains.length * bloodIntensity);
 
+    let visibleStainsCount = Math.floor(bloodStains.length * bloodIntensity);
     for (let i = 0; i < visibleStainsCount; i++) {
         let b = bloodStains[i];
-
-        let p = project(
-            b.surface === 1 ? -2.47 : (b.surface === 2 ? 2.47 : b.x),
-            b.surface === 0 ? 0.01 : b.y,
-            b.z
-        );
-
+        let p = project(b.surface === 1 ? -2.47 : (b.surface === 2 ? 2.47 : b.x), b.surface === 0 ? 0.01 : b.y, b.z);
         if (p) {
             let r = b.radius * p.scale;
-
             ctx.fillStyle = `rgba(130, 0, 0, ${0.4 + bloodIntensity * 0.5})`;
             ctx.beginPath();
             ctx.ellipse(p.x, p.y, r, r * (b.surface === 0 ? 0.3 : 1), 0, 0, Math.PI * 2);
@@ -641,14 +702,13 @@ function drawBloodOverlay() {
         vignette.addColorStop(0, "transparent");
         vignette.addColorStop(0.7, "rgba(80, 0, 0, 0.8)");
         vignette.addColorStop(1, "rgba(150, 0, 0, 0.98)");
-
         ctx.fillStyle = vignette;
         ctx.fillRect(0, 0, 640, 360);
     }
 }
 
 // =================================
-// COULOIR PRINCIPAL
+// COULOIR & RENDU
 // =================================
 
 function corridor() {
@@ -671,14 +731,17 @@ function corridor() {
     for(let z=-40;z<playerZ;z+=4) {
         let z2 = z+4;
 
+        // Sol
         polygon([
             [-2.5,0,z], [2.5,0,z], [2.5,0,z2], [-2.5,0,z2]
         ], "#242321");
 
+        // Plafond
         polygon([
             [-2.5,3,z2], [2.5,3,z2], [2.5,3,z], [-2.5,3,z]
         ], "#111110");
 
+        // Murs
         polygon([
             [-2.5,0,z2], [-2.5,3,z2], [-2.5,3,z], [-2.5,0,z]
         ], "#292827");
@@ -687,9 +750,9 @@ function corridor() {
             [2.5,0,z], [2.5,3,z], [2.5,3,z2], [2.5,0,z2]
         ], "#20201f");
 
+        // Joints
         let line1=project(-2.5,0,z);
         let line2=project(2.5,0,z);
-
         if(line1 && line2) {
             ctx.strokeStyle="#383634";
             ctx.lineWidth=1;
@@ -701,7 +764,6 @@ function corridor() {
 
         let a=project(-2.5,0,z);
         let b=project(-2.5,3,z);
-
         if(a && b) {
             ctx.strokeStyle="#343230";
             ctx.beginPath();
@@ -711,17 +773,22 @@ function corridor() {
         }
     }
 
+    // Fond
     polygon([
         [-2.5,0,-40], [-2.5,3,-40], [2.5,3,-40], [2.5,0,-40]
     ], "#161616");
 
+    // Affichage du Sang
     drawBloodOverlay();
 
+    // Affichage des Portes Dynamiques
     doors.forEach(d => drawDoor(d));
 
+    // Lampes
     drawLamp(0,2.94,-12);
     drawLamp(0,2.94,-29);
 
+    // Brouillard
     let fog=ctx.createRadialGradient(320,180,70,320,180,350);
     fog.addColorStop(0,"transparent");
     fog.addColorStop(1, doorsOpened >= 10 ? "rgba(40,0,0,0.95)" : "rgba(0,0,0,0.95)");
@@ -729,158 +796,145 @@ function corridor() {
     ctx.fillStyle=fog;
     ctx.fillRect(0,0,640,360);
 
+    // Grain bruitage
     for(let i=0;i<200;i++) {
         let x=Math.random()*640;
         let y=Math.random()*360;
-
-        ctx.fillStyle=Math.random()>.5
-            ? "rgba(255,255,255,0.025)"
-            : "rgba(0,0,0,0.08)";
-
+        ctx.fillStyle=Math.random()>.5 ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.08)";
         ctx.fillRect(x,y,2,2);
     }
 }
 
 // =================================
-// DIMENSION DES BACKROOMS
+// DESSIN DE PORTE
 // =================================
 
 function backrooms() {
-    ctx.fillStyle = "#b5ad72";
+    // Ambiance Backrooms : moquette, papier peint jaune et néons fatigués.
+    ctx.fillStyle = "#aaa16b";
     ctx.fillRect(0, 0, 640, 360);
 
-    for (let z = -40; z < playerZ; z += 4) {
-        let z2 = z + 4;
+    if (!mazeGrid.length) return;
 
-        // Sol
-        polygon([
-            [-2.5,0,z], [2.5,0,z], [2.5,0,z2], [-2.5,0,z2]
-        ], "#827b4d");
+    const here = mazeCellAt(playerX, playerZ);
+    const range = 9;
+    const minR = Math.max(0, here.r - range);
+    const maxR = Math.min(MAZE_SIZE - 1, here.r + range);
+    const minC = Math.max(0, here.c - range);
+    const maxC = Math.min(MAZE_SIZE - 1, here.c + range);
+    const wallFaces = [];
 
-        // Plafond
-        polygon([
-            [-2.5,3,z2], [2.5,3,z2], [2.5,3,z], [-2.5,3,z]
-        ], "#c3bb82");
+    // Sols et plafonds de chaque case accessible autour du joueur.
+    for (let r = minR; r <= maxR; r++) {
+        for (let c = minC; c <= maxC; c++) {
+            if (mazeGrid[r][c] !== 0) continue;
 
-        // Murs
-        polygon([
-            [-2.5,0,z2], [-2.5,3,z2], [-2.5,3,z], [-2.5,0,z]
-        ], "#aaa16a");
+            const x = mazeWorldX(c);
+            const z = mazeWorldZ(r);
+            const x1 = x - MAZE_CELL / 2;
+            const x2 = x + MAZE_CELL / 2;
+            const z1 = z - MAZE_CELL / 2;
+            const z2 = z + MAZE_CELL / 2;
+            const tone = ((r * 7 + c * 11) % 4);
+            const floorColor = ["#77704a", "#80784e", "#746d48", "#847b50"][tone];
 
-        polygon([
-            [2.5,0,z], [2.5,3,z], [2.5,3,z2], [2.5,0,z2]
-        ], "#958c59");
+            polygon([[x1,0.01,z1], [x2,0.01,z1], [x2,0.01,z2], [x1,0.01,z2]], floorColor);
+            polygon([[x1,3,z2], [x2,3,z2], [x2,3,z1], [x1,3,z1]], "#bcb47d");
 
-        let floorLineA = project(-2.5, 0.015, z);
-        let floorLineB = project(2.5, 0.015, z);
+            // Joints de moquette et dalles de plafond.
+            const fa = project(x1, 0.025, z1);
+            const fb = project(x2, 0.025, z2);
+            if (fa && fb) {
+                ctx.strokeStyle = "rgba(40,34,18,0.20)";
+                ctx.lineWidth = 1;
+                ctx.strokeRect(Math.min(fa.x, fb.x), Math.min(fa.y, fb.y), Math.abs(fb.x-fa.x), Math.abs(fb.y-fa.y));
+            }
 
-        if (floorLineA && floorLineB) {
-            ctx.strokeStyle = "rgba(45,39,20,0.22)";
+            const distance = Math.hypot(x - playerX, z - playerZ);
+            const wallColor = tone % 2 ? "#a39a62" : "#958c59";
+            const addWall = (points, side) => wallFaces.push({ points, side, distance, color: wallColor });
+
+            // Un mur est dessiné sur chaque bord qui donne sur une case fermée.
+            if (mazeGrid[r - 1]?.[c] !== 0) addWall([[x1,0,z1],[x1,3,z1],[x2,3,z1],[x2,0,z1]], "north");
+            if (mazeGrid[r + 1]?.[c] !== 0) addWall([[x2,0,z2],[x2,3,z2],[x1,3,z2],[x1,0,z2]], "south");
+            if (mazeGrid[r]?.[c - 1] !== 0) addWall([[x1,0,z2],[x1,3,z2],[x1,3,z1],[x1,0,z1]], "west");
+            if (mazeGrid[r]?.[c + 1] !== 0) addWall([[x2,0,z1],[x2,3,z1],[x2,3,z2],[x2,0,z2]], "east");
+
+            // Néons espacés et irréguliers pour éviter un éclairage trop uniforme.
+            if ((r * 13 + c * 7) % 17 === 0) {
+                const lamp = project(x, 2.94, z);
+                if (lamp) {
+                    const size = lamp.scale;
+                    ctx.save();
+                    ctx.shadowColor = "#fff6b5";
+                    ctx.shadowBlur = Math.max(3, size * 0.12);
+                    ctx.fillStyle = "rgba(255,250,205,0.9)";
+                    ctx.fillRect(lamp.x - size * 0.48, lamp.y - size * 0.07, size * 0.96, Math.max(2, size * 0.13));
+                    ctx.restore();
+                }
+            }
+        }
+    }
+
+    // Les murs lointains sont peints avant les murs proches.
+    wallFaces.sort((a, b) => b.distance - a.distance);
+    for (const wall of wallFaces) {
+        polygon(wall.points, wall.color);
+        const a = project(wall.points[0][0], 0.2, wall.points[0][2]);
+        const b = project(wall.points[1][0], 2.8, wall.points[1][2]);
+        if (a && b) {
+            ctx.strokeStyle = "rgba(70,59,29,0.22)";
             ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.moveTo(floorLineA.x, floorLineA.y);
-            ctx.lineTo(floorLineB.x, floorLineB.y);
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
             ctx.stroke();
         }
     }
 
-    // Séparations latérales du labyrinthe.
-    for (let z = -8; z > -38; z -= 10) {
-        polygon([
-            [-2.48,0,z], [-2.48,2.7,z],
-            [-2.48,2.7,z-1.2], [-2.48,0,z-1.2]
-        ], "#766f47");
-
-        polygon([
-            [2.48,0,z-4], [2.48,2.7,z-4],
-            [2.48,2.7,z-5.2], [2.48,0,z-5.2]
-        ], "#756e46");
-    }
-
-    // Lampes fluorescentes.
-    for (let z = -7; z > -38; z -= 9) {
-        const p = project(0, 2.94, z);
-
-        if (p) {
-            const s = p.scale;
-
-            ctx.fillStyle = "rgba(255,255,205,0.9)";
-            ctx.fillRect(
-                p.x - s * 0.45,
-                p.y - s * 0.08,
-                s * 0.9,
-                Math.max(2, s * 0.12)
-            );
-
-            ctx.fillStyle = "rgba(255,240,150,0.10)";
-            ctx.beginPath();
-            ctx.ellipse(p.x, p.y + s * 0.45, s * 1.7, s * 2.2, 0, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
-
-    // Portail bleu au fond.
-    const portalZ = -27;
-
-    const portalPoints = [
-        [-1.05, 0.15, portalZ],
-        [-1.05, 2.65, portalZ],
-        [1.05, 2.65, portalZ],
-        [1.05, 0.15, portalZ]
+    // Portail vertical placé au fond d'une impasse, loin du point de départ.
+    const tangentX = -mazePortal.nz;
+    const tangentZ = mazePortal.nx;
+    const cx = mazePortal.x - mazePortal.nx * 0.18;
+    const cz = mazePortal.z - mazePortal.nz * 0.18;
+    const halfWidth = 0.85;
+    const portalCorners = [
+        [cx - tangentX * halfWidth, 0.08, cz - tangentZ * halfWidth],
+        [cx - tangentX * halfWidth, 2.8, cz - tangentZ * halfWidth],
+        [cx + tangentX * halfWidth, 2.8, cz + tangentZ * halfWidth],
+        [cx + tangentX * halfWidth, 0.08, cz + tangentZ * halfWidth]
     ];
-
-    const pp = portalPoints.map(v => project(v[0], v[1], v[2]));
-
-    if (pp.every(Boolean)) {
+    const portalProjected = portalCorners.map(p => project(p[0], p[1], p[2]));
+    if (portalProjected.every(Boolean)) {
         ctx.save();
-
-        ctx.shadowColor = "#8dfcff";
+        ctx.shadowColor = "#65f5ff";
         ctx.shadowBlur = 28;
-        ctx.fillStyle = "rgba(90,230,235,0.16)";
-
+        ctx.fillStyle = "rgba(65,220,235,0.22)";
         ctx.beginPath();
-        ctx.moveTo(pp[0].x, pp[0].y);
-        pp.slice(1).forEach(v => ctx.lineTo(v.x, v.y));
+        ctx.moveTo(portalProjected[0].x, portalProjected[0].y);
+        portalProjected.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
         ctx.closePath();
         ctx.fill();
-
-        ctx.strokeStyle = "#a7ffff";
-        ctx.lineWidth = Math.max(2, pp[0].scale * 0.045);
+        ctx.strokeStyle = "#a8ffff";
+        ctx.lineWidth = Math.max(2, portalProjected[0].scale * 0.045);
         ctx.stroke();
-
         ctx.restore();
-
-        const center = project(0, 1.4, portalZ);
-
-        if (center) {
-            ctx.fillStyle = "rgba(190,255,255,0.8)";
-            ctx.font = "bold 12px Arial";
-            ctx.textAlign = "center";
-            ctx.fillText("SORTIE", center.x, center.y);
-        }
     }
 
-    // Brouillard jaune.
-    const haze = ctx.createRadialGradient(320, 180, 40, 320, 180, 370);
-    haze.addColorStop(0, "rgba(210,195,120,0.02)");
-    haze.addColorStop(1, "rgba(20,18,8,0.78)");
-
+    // Brume jaune et léger grain de caméra.
+    const haze = ctx.createRadialGradient(320, 180, 35, 320, 180, 390);
+    haze.addColorStop(0, "rgba(216,201,130,0.02)");
+    haze.addColorStop(1, "rgba(22,19,8,0.72)");
     ctx.fillStyle = haze;
     ctx.fillRect(0, 0, 640, 360);
 
-    // Grain visuel.
-    for (let i = 0; i < 70; i++) {
-        const x = (i * 97 + Math.floor(performance.now() / 90) * 13) % 640;
-        const y = (i * 53 + Math.floor(performance.now() / 120) * 7) % 360;
-
+    for (let i = 0; i < 90; i++) {
+        const x = (i * 97 + Math.floor(performance.now() / 100) * 11) % 640;
+        const y = (i * 53 + Math.floor(performance.now() / 130) * 5) % 360;
         ctx.fillStyle = "rgba(255,255,220,0.035)";
         ctx.fillRect(x, y, 2, 2);
     }
 }
-
-// =================================
-// DESSIN DES PORTES
-// =================================
 
 function drawDoor(door) {
     let x = door.x;
@@ -888,21 +942,15 @@ function drawDoor(door) {
     let side = door.side;
     let angle = door.openProgress * Math.PI * 0.55;
 
+    // Encadrement / Trou
     polygon([
-        [x, 0, z],
-        [x, 2.5, z],
-        [x, 2.5, z - 2],
-        [x, 0, z - 2]
+        [x, 0, z], [x, 2.5, z], [x, 2.5, z - 2], [x, 0, z - 2]
     ], "#000");
 
     if (door.openProgress > 0.05) {
         let innerX = x + side * 1.5;
-
         polygon([
-            [innerX, 0, z + 1],
-            [innerX, 2.5, z + 1],
-            [innerX, 2.5, z - 3],
-            [innerX, 0, z - 3]
+            [innerX, 0, z + 1], [innerX, 2.5, z + 1], [innerX, 2.5, z - 3], [innerX, 0, z - 3]
         ], "#181716");
     }
 
@@ -921,12 +969,7 @@ function drawDoor(door) {
         [doorTipX, 0, doorTipZ]
     ], "#191817");
 
-    let handlePos = project(
-        (doorBaseX + doorTipX) / 2,
-        1,
-        (doorBaseZ + doorTipZ) / 2
-    );
-
+    let handlePos = project((doorBaseX + doorTipX) / 2, 1, (doorBaseZ + doorTipZ) / 2);
     if(handlePos) {
         ctx.fillStyle="#777";
         ctx.fillRect(handlePos.x-2, handlePos.y-2, 4, 4);
@@ -936,31 +979,21 @@ function drawDoor(door) {
 function drawLamp(x,y,z) {
     const p=project(x,y,z);
     if(!p) return;
-
     let s=p.scale;
 
     ctx.fillStyle="#aaa";
     ctx.fillRect(p.x-s*.3,p.y-s*.1,s*.6,s*.12);
 
-    ctx.fillStyle= doorsOpened >= 10
-        ? "rgba(255,0,0,0.25)"
-        : "rgba(210,200,170,0.10)";
-
+    ctx.fillStyle= doorsOpened >= 10 ? "rgba(255,0,0,0.25)" : "rgba(210,200,170,0.10)";
     ctx.beginPath();
     ctx.ellipse(p.x,p.y+s*.8,s*1.5,s*2,0,0,Math.PI*2);
     ctx.fill();
 }
 
-// =================================
-// MONSTRE
-// =================================
-
 function drawMonster() {
     let z=-30+monster*27;
     let p=project(0,1.5,z);
-
     if(!p) return;
-
     let s=p.scale;
 
     ctx.save();
@@ -977,11 +1010,9 @@ function drawMonster() {
 
     ctx.strokeStyle="#020202";
     ctx.lineWidth=Math.max(2,s*.18);
-
     ctx.beginPath();
     ctx.moveTo(-s*.3,-s*.3);
     ctx.lineTo(-s*.85,s*1.7);
-
     ctx.moveTo(s*.3,-s*.3);
     ctx.lineTo(s*.85,s*1.7);
     ctx.stroke();
@@ -989,7 +1020,6 @@ function drawMonster() {
     ctx.fillStyle="#ff0000";
     ctx.shadowColor="red";
     ctx.shadowBlur=15;
-
     ctx.beginPath();
     ctx.arc(-s*.13,-s*1.15,Math.max(2,s*.06),0,Math.PI*2);
     ctx.arc(s*.13,-s*1.15,Math.max(2,s*.06),0,Math.PI*2);
@@ -1000,12 +1030,10 @@ function drawMonster() {
 
 function drawScare() {
     scareTime++;
-
     ctx.fillStyle="#000";
     ctx.fillRect(0,0,640,360);
 
     ctx.save();
-
     let shake=Math.random()*16-8;
     ctx.translate(320+shake,180+shake);
 
@@ -1039,53 +1067,59 @@ function drawScare() {
 }
 
 function finish() {
+    const cause = scareCause;
     playing=false;
     scare=false;
-
     black.style.opacity="1";
     document.exitPointerLock?.();
 
     setTimeout(()=>{
         second=true;
-
-        menu.innerHTML=`
-            <h1>THE CORRIDOR</h1>
-            <p>Il t'a attrapé...</p>
-            <button id="again">RECOMMENCER</button>
-        `;
-
-        menu.style.display="flex";
-        document.getElementById("again").addEventListener("click",start);
-
+        if (cause === "door11") {
+            menu.innerHTML=`
+                <h1>THE CORRIDOR</h1>
+                <p>Le couloir a disparu...</p>
+                <button id="continue">CONTINUER</button>
+            `;
+            menu.style.display="flex";
+            document.getElementById("continue").addEventListener("click", startBackrooms);
+        } else {
+            menu.innerHTML=`
+                <h1>THE CORRIDOR</h1>
+                <p>Il t'a attrapé...</p>
+                <button id="again">RECOMMENCER</button>
+            `;
+            menu.style.display="flex";
+            document.getElementById("again").addEventListener("click", start);
+        }
     },1300);
 }
 
 // =================================
-// DÉPLACEMENTS
+// DÉPLACEMENTS & INTERACTIONS
 // =================================
 
 function movement(dt) {
     let speed=2.5*dt;
     let moved = false;
+    const oldX = playerX;
+    const oldZ = playerZ;
 
     if(keys["z"] || keys["w"] || keys["arrowup"]) {
         playerX+=Math.sin(yaw)*speed;
         playerZ-=Math.cos(yaw)*speed;
         moved = true;
     }
-
     if(keys["s"] || keys["arrowdown"]) {
         playerX-=Math.sin(yaw)*speed;
         playerZ+=Math.cos(yaw)*speed;
         moved = true;
     }
-
     if(keys["q"] || keys["a"]) {
         playerX-=Math.cos(yaw)*speed;
         playerZ-=Math.sin(yaw)*speed;
         moved = true;
     }
-
     if(keys["d"]) {
         playerX+=Math.cos(yaw)*speed;
         playerZ+=Math.sin(yaw)*speed;
@@ -1094,7 +1128,6 @@ function movement(dt) {
 
     if(moved) {
         stepTimer += dt;
-
         if(stepTimer > 0.45) {
             playSound("step");
             stepTimer = 0;
@@ -1104,75 +1137,75 @@ function movement(dt) {
     if(keys["arrowleft"]) yaw-=1.7*dt;
     if(keys["arrowright"]) yaw+=1.7*dt;
 
-    playerX=Math.max(-1.8,Math.min(1.8,playerX));
-    playerZ=Math.max(-37,Math.min(2,playerZ));
-
-    // Détection du portail.
-    activePortal = false;
-
     if (dimension === "backrooms") {
-        const portalDistance = Math.hypot(playerX, playerZ - (-27));
-        activePortal = portalDistance < 2.2;
+        // Collision contre les vrais murs du labyrinthe, avec glissement le long des parois.
+        const targetX = playerX;
+        const targetZ = playerZ;
+        if (!canWalkMaze(targetX, targetZ)) {
+            if (canWalkMaze(targetX, oldZ)) playerZ = oldZ;
+            else if (canWalkMaze(oldX, targetZ)) playerX = oldX;
+            else { playerX = oldX; playerZ = oldZ; }
+        }
+    } else {
+        playerX=Math.max(-1.8,Math.min(1.8,playerX));
+        playerZ=Math.max(-37,Math.min(2,playerZ));
     }
 
-    // Détection des portes.
+    // Détection du portail secret à l'extrémité du labyrinthe.
+    activePortal = false;
+    if (dimension === "backrooms") {
+        const portalDistance = Math.hypot(playerX - mazePortal.x, playerZ - mazePortal.z);
+        activePortal = portalDistance < 1.55;
+    }
+
+    // Les portes n'existent que dans le couloir d'origine.
     activeDoor = null;
+    if (dimension === "corridor") {
+        doors.forEach((door, index) => {
+            let dist = Math.hypot(playerX - door.x, playerZ - (door.z - 1));
+            if (dist < 1.8) activeDoor = index;
+            if (door.opening && door.openProgress < 1) {
+                door.openProgress = Math.min(1, door.openProgress + dt * 2.5);
+            }
+        });
+    }
 
-    doors.forEach((door, index) => {
-        let dist = Math.hypot(playerX - door.x, playerZ - (door.z - 1));
-
-        if (dist < 1.8) {
-            activeDoor = index;
-        }
-
-        if (door.opening && door.openProgress < 1) {
-            door.openProgress = Math.min(1, door.openProgress + dt * 2.5);
-        }
-    });
-
-    // Messages d'interaction.
     if (activePortal) {
         promptEl.textContent = "APPUIE SUR [E] OU CLIQUE POUR RETOURNER AU COULOIR";
         promptEl.style.display = "block";
-
     } else if (activeDoor !== null && !doors[activeDoor].opening && dimension === "corridor") {
         promptEl.textContent = "APPUIE SUR [E] OU CLIQUE POUR OUVRIR";
         promptEl.style.display = "block";
-
     } else {
         promptEl.style.display = "none";
     }
 
-    // Événement de la 11e porte.
-    if (eventDoor11Active && !scare) {
+    // GESTION DE LA 11ème PORTE : QUAND IL SE RETOURNE PUIS SE RERETOURNE
+    if (dimension === "corridor" && eventDoor11Active && !scare) {
         let normalizedYaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
-        let isLookingBack = Math.abs(normalizedYaw) > 2.2;
+        let isLookingBack = Math.abs(normalizedYaw) > 2.2; // Le joueur regarde en arrière
 
         if (isLookingBack && !turnedAroundOnce) {
-            turnedAroundOnce = true;
+            turnedAroundOnce = true; // Il s'est retourné, il voit qu'il n'y a rien
             hideTurnAroundMessage();
         }
 
+        // Il s'était retourné, et maintenant il se RERETOURNE vers l'avant -> SCREAMER !
         if (turnedAroundOnce && !isLookingBack) {
             scare = true;
+            scareCause = "door11";
             scareTime = 0;
             playSound("scream");
         }
     }
 }
 
-// =================================
-// CLIC ET SOURIS
-// =================================
-
 canvas.addEventListener("click",()=>{
     if(playing && second) {
         if (activePortal) {
             returnToCorridor();
-
         } else if (dimension === "corridor" && activeDoor !== null && !doors[activeDoor].opening) {
             openDoor(activeDoor);
-
         } else {
             canvas.requestPointerLock?.();
         }
@@ -1207,6 +1240,7 @@ function draw(time=0) {
 
         if(monster>=.94) {
             scare=true;
+            scareCause="intro";
             scareTime=0;
             playSound("scream");
         }
